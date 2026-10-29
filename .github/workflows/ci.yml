@@ -1,0 +1,58 @@
+name: CI
+
+# A esteira inteira mora em slipalison/github-workflows (pipeline.yml):
+#
+#   qualidade   gofmt, golangci-lint (.golangci.yml, com gosec), go vet,
+#               go test -race e piso de cobertura
+#   imagem      build do Dockerfile, Trivy na imagem ANTES de publicar,
+#               ghcr.io/slipalison/comporta:sha-<commit>
+#   seguranca   Gitleaks e TruffleHog no historico inteiro, Semgrep,
+#               Trivy (SCA do go.mod), SBOM e CodeQL (Go)
+#   sonar       SonarQube Cloud com cobertura e Quality Gate
+#   versao      Conventional Commits -> proxima versao; na main, tag, release
+#               e o alias :<versao> da imagem
+#
+# Sem deploy: o Comporta roda onde cada um quiser (docker compose), entao
+# `app` fica vazio e o job `publicar` (GitOps) sai pulado.
+#
+# O check a exigir no ruleset da main e `esteira / Portao`.
+#
+# Repositorio publico: os minutos de Actions sao gratuitos.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  esteira:
+    permissions:
+      contents: write
+      packages: write
+      security-events: write
+      actions: read
+    uses: slipalison/github-workflows/.github/workflows/pipeline.yml@main
+    with:
+      componentes: '[{"nome":"comporta","linguagem":"go","versao":"1.27","cobertura":60}]'
+      imagem: ghcr.io/slipalison/comporta
+      versao_inicial: "0.1.0"
+      linguagens_codeql: '["go"]'
+      sonar_projeto: slipalison_comporta
+      sonar_linguagem: go
+      sonar_versao_linguagem: "1.27"
+      sonar_comando_testes: "go test ./... -coverpkg=./... -coverprofile=coverage.out"
+      sonar_parametros: |
+        sonar.sources=.
+        sonar.exclusions=**/*_test.go
+        sonar.tests=.
+        sonar.test.inclusions=**/*_test.go
+        sonar.go.coverage.reportPaths=coverage.out
+        sonar.coverage.exclusions=internal/web/static/**
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
