@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 // DescribeSQL lists tables and views, or the columns of one table.

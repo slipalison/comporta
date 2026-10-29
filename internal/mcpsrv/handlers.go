@@ -13,9 +13,9 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	"dbmcp/internal/db"
-	"dbmcp/internal/guard"
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/db"
+	"github.com/slipalison/comporta/internal/guard"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 type describeArgs struct {

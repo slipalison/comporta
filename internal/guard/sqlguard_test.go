@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 func TestAnalyzeSQL(t *testing.T) {
@@ -76,7 +76,7 @@ func TestAnalyzeSQL(t *testing.T) {
 
 		{lite, "SELECT * FROM [order] WHERE `delete` = 1", read},
 		{lite, "PRAGMA table_info(t)", ddl},
-		{lite, "ATTACH DATABASE 'x.db' AS x", ddl},
+		{lite, "SELECT t.attach FROM t", read},
 		// SQLite does not nest comments: the DELETE below is real code
 		{lite, "SELECT /* /* */ 1 DELETE FROM t", del},
 	}
@@ -110,6 +110,9 @@ func TestAnalyzeSQLRejects(t *testing.T) {
 		{model.Postgres, "SELECT $x$ unterminated"},
 		{model.MySQL, "SELECT /*! DELETE FROM t */ 1"},
 		{model.MySQL, "SELECT /*M! DELETE FROM t */ 1"},
+		{model.SQLite, "ATTACH DATABASE '/data/comporta.db' AS own"},
+		{model.SQLite, "attach '/data/comporta.db' as own"},
+		{model.SQLite, "DETACH own"},
 	}
 	for _, tc := range cases {
 		if _, err := AnalyzeSQL(tc.db, tc.sql); err == nil {

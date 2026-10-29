@@ -15,14 +15,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"dbmcp/internal/db"
-	"dbmcp/internal/model"
-	"dbmcp/internal/store"
+	"github.com/slipalison/comporta/internal/db"
+	"github.com/slipalison/comporta/internal/model"
+	"github.com/slipalison/comporta/internal/store"
 )
 
 const instructions = `This server is a permission-controlled gateway to several databases (PostgreSQL, SQL Server, MySQL/MariaDB, SQLite and MongoDB). Every call is audited.
@@ -47,7 +48,7 @@ type Server struct {
 
 func New(st *store.Store, reg *db.Registry, version string, maxCap int) *Server {
 	return &Server{
-		srv: mcp.NewServer(&mcp.Implementation{Name: "dbmcp", Title: "DB MCP Gateway", Version: version},
+		srv: mcp.NewServer(&mcp.Implementation{Name: "comporta", Title: "Comporta", Version: version},
 			&mcp.ServerOptions{Instructions: instructions}),
 		store:  st,
 		reg:    reg,
@@ -402,9 +403,13 @@ func (c *call) ok(v any, rows int64) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil
 }
 
+// limit cuts s to at most n bytes without splitting a UTF-8 character.
 func limit(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n] + "…"
 }

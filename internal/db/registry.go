@@ -22,7 +22,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/connstring"
 	_ "modernc.org/sqlite"
 
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 type handle struct {
@@ -33,12 +33,12 @@ type handle struct {
 
 func (h *handle) close() {
 	if h.sql != nil {
-		h.sql.Close()
+		_ = h.sql.Close()
 	}
 	if h.mongo != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		h.mongo.Disconnect(ctx)
+		_ = h.mongo.Disconnect(ctx)
 	}
 }
 
@@ -83,7 +83,7 @@ func (r *Registry) open(c model.Connection) (*handle, error) {
 		client, err := mongo.Connect(options.Client().ApplyURI(c.DSN).
 			SetMaxPoolSize(10).
 			SetServerSelectionTimeout(10 * time.Second).
-			SetAppName("dbmcp"))
+			SetAppName("comporta"))
 		if err != nil {
 			return nil, err
 		}
@@ -207,11 +207,7 @@ func (r *Registry) sqlDSN(c model.Connection) (driver, dsn string, err error) {
 	case model.SQLite:
 		path := strings.TrimPrefix(strings.TrimPrefix(c.DSN, "sqlite://"), "file:")
 		path, query, _ := strings.Cut(path, "?")
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return "", "", err
-		}
-		if own, _ := filepath.Abs(r.storePath); strings.HasPrefix(abs, own) {
+		if r.isOwnStore(path) {
 			return "", "", errors.New("the gateway's own audit database cannot be used as a connection")
 		}
 		dsn := "file:" + path + "?_pragma=busy_timeout(5000)"
@@ -221,6 +217,26 @@ func (r *Registry) sqlDSN(c model.Connection) (driver, dsn string, err error) {
 		return "sqlite", dsn, nil
 	}
 	return "", "", fmt.Errorf("unsupported database type %q", c.Type)
+}
+
+// isOwnStore reports whether path is the gateway's store or one of its WAL
+// files, also when reached through a symlinked directory.
+func (r *Registry) isOwnStore(path string) bool {
+	own := resolve(r.storePath)
+	return own != "" && strings.HasPrefix(resolve(path), own)
+}
+
+// resolve makes path absolute and resolves symlinks in its directory; the
+// file itself may not exist yet.
+func resolve(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		abs = filepath.Join(dir, filepath.Base(abs))
+	}
+	return abs
 }
 
 func mysqlURLToDSN(raw string) (string, error) {

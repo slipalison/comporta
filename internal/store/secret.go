@@ -27,7 +27,7 @@ func LoadKey(secret, dataDir string) ([]byte, error) {
 		return sum[:], nil
 	}
 	path := filepath.Join(dataDir, "secret.key")
-	if b, err := os.ReadFile(path); err == nil {
+	if b, err := os.ReadFile(path); err == nil { // #nosec G304 -- fixed name inside the configured data dir
 		key, err := hex.DecodeString(strings.TrimSpace(string(b)))
 		if err != nil || len(key) != 32 {
 			return nil, fmt.Errorf("invalid key file %s", path)
@@ -78,7 +78,7 @@ func (c *Cipher) Decrypt(s string) (string, error) {
 	}
 	plain, err := c.aead.Open(nil, raw[:ns], raw[ns:], nil)
 	if err != nil {
-		return "", errors.New("cannot decrypt connection string: DBMCP_SECRET_KEY changed?")
+		return "", errors.New("cannot decrypt connection string: COMPORTA_SECRET_KEY changed?")
 	}
 	return string(plain), nil
 }

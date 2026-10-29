@@ -12,7 +12,7 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 // MaxCellChars truncates very large text values so one row cannot flood the
@@ -54,7 +54,7 @@ func RunSQL(ctx context.Context, pool *sql.DB, dbType model.DBType, req SQLReque
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // no-op after a commit
 
 	var res *Result
 	if !req.Write || req.ReturnsRows {
@@ -89,7 +89,7 @@ func RunSQL(ctx context.Context, pool *sql.DB, dbType model.DBType, req SQLReque
 }
 
 func collect(rows *sql.Rows, maxRows int) (*Result, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	types, err := rows.ColumnTypes()
 	if err != nil {
 		return nil, err

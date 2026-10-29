@@ -13,7 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 // ParseDoc reads a MongoDB Extended JSON object. Empty input is an empty
@@ -76,7 +76,7 @@ type MongoResult struct {
 }
 
 func readCursor(ctx context.Context, cur *mongo.Cursor, maxRows int) (*MongoResult, error) {
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	res := &MongoResult{Documents: []json.RawMessage{}}
 	for cur.Next(ctx) {
 		if len(res.Documents) >= maxRows {
@@ -154,7 +154,7 @@ func DescribeCollection(ctx context.Context, coll *mongo.Collection, sampleSize 
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	fields := map[string]*FieldInfo{}
 	for cur.Next(ctx) {
 		info.Sampled++
@@ -171,7 +171,7 @@ func DescribeCollection(ctx context.Context, coll *mongo.Collection, sampleSize 
 
 	icur, err := coll.Indexes().List(ctx)
 	if err == nil {
-		defer icur.Close(ctx)
+		defer func() { _ = icur.Close(ctx) }()
 		for icur.Next(ctx) {
 			if b, err := bson.MarshalExtJSON(icur.Current, false, false); err == nil {
 				info.Indexes = append(info.Indexes, b)

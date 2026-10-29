@@ -14,7 +14,7 @@ import (
 	"slices"
 	"strings"
 
-	"dbmcp/internal/model"
+	"github.com/slipalison/comporta/internal/model"
 )
 
 type Analysis struct {
@@ -102,16 +102,35 @@ func AnalyzeSQL(dbType model.DBType, query string) (Analysis, error) {
 	default:
 		return Analysis{}, fmt.Errorf("only one SQL statement per call is allowed (found %d separated by ';')", len(stmts))
 	}
+	if err := forbidden(dbType, stmts[0]); err != nil {
+		return Analysis{}, err
+	}
 	return analyze(dbType, stmts[0]), nil
+}
+
+// forbidden rejects statements no permission can allow. In SQLite, ATTACH
+// opens any file the gateway can read as a second schema, including the
+// gateway's own database, where a connection could rewrite its permissions.
+func forbidden(dbType model.DBType, toks []token) error {
+	if dbType != model.SQLite {
+		return nil
+	}
+	for i, t := range toks {
+		if t.kind == tkWord && (t.text == "ATTACH" || t.text == "DETACH") && (i == 0 || toks[i-1].kind != tkDot) {
+			return fmt.Errorf("%s is not allowed: a connection only reaches its own database file", t.text)
+		}
+	}
+	return nil
 }
 
 func analyze(dbType model.DBType, toks []token) Analysis {
 	ops := map[model.Op]bool{}
 	seen := map[string]bool{}
 	leading := ""
-	if toks[0].kind == tkLParen {
+	switch toks[0].kind {
+	case tkLParen:
 		leading = "("
-	} else if toks[0].kind == tkWord {
+	case tkWord:
 		leading = toks[0].text
 	}
 
@@ -279,7 +298,7 @@ func tokenize(dbType model.DBType, s string) ([]token, error) {
 			for j < n && (isWordChar(dbType, s[j]) && s[j] != '$') {
 				j++
 			}
-			if j < n && s[j] == '$' && (j == i+1 || !(s[i+1] >= '0' && s[i+1] <= '9')) {
+			if j < n && s[j] == '$' && (j == i+1 || s[i+1] < '0' || s[i+1] > '9') {
 				tag := s[i : j+1]
 				end := strings.Index(s[j+1:], tag)
 				if end < 0 {
