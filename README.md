@@ -44,12 +44,12 @@ A aba **Conectar clientes** mostra os trechos para VS Code, Copilot CLI, Gemini 
 |---|---|---|
 | `COMPORTA_ADMIN_USER` / `COMPORTA_ADMIN_PASSWORD` | `admin` / — | Basic auth da interface. A senha é obrigatória. Dez senhas erradas em 5 minutos bloqueiam o endereço por 5 minutos. |
 | `COMPORTA_MCP_TOKENS` | — | `rotulo:token,...` (token com 16 caracteres ou mais). Ou `COMPORTA_MCP_TOKEN` para um só. |
-| `COMPORTA_SECRET_KEY` | gerada em `/data/secret.key` | Criptografa as connection strings (AES-256-GCM). Trocar depois torna as guardadas ilegíveis. |
+| `COMPORTA_SECRET_KEY` | gerada em `/data/secret.key` | Criptografa as connection strings (AES-256-GCM). A chave sai da frase por Argon2id, com um sal guardado em `/data/secret.salt`. Trocar a frase depois torna as connection strings guardadas ilegíveis, e o servidor não sobe. |
 | `COMPORTA_LOG_RETENTION_DAYS` | `30` | Registros mais antigos são apagados de hora em hora. |
 | `COMPORTA_MAX_ROWS_CAP` | `1000` | Teto global de linhas por consulta; cada conexão tem o seu limite abaixo disso. |
 | `COMPORTA_PORT` | `7843` | Porta no host, sempre em `127.0.0.1` (só no `docker compose`). |
 
-**Vindo do `db-mcp`?** As variáveis `DBMCP_*` continuam lidas (com um aviso no log para renomear), e um volume com `dbmcp.db` continua sendo usado.
+**Vindo do `db-mcp`?** As variáveis `DBMCP_*` continuam lidas (com um aviso no log para renomear), e um volume com `dbmcp.db` continua sendo usado. Na primeira partida, as connection strings gravadas pelo `db-mcp` (chave por SHA-256 da frase) são cifradas de novo com a chave Argon2id.
 
 ## O que a IA enxerga
 

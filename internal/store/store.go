@@ -89,7 +89,57 @@ func Open(path string, c *Cipher) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrating %s: %w", path, err)
 	}
-	return &Store{db: db, cipher: c, Path: path}, nil
+	s := &Store{db: db, cipher: c, Path: path}
+	if err := s.reencrypt(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("re-encrypting connection strings: %w", err)
+	}
+	return s, nil
+}
+
+// outdatedSecrets returns the sealed connection strings, by id, that were
+// not written in the current format.
+func (s *Store) outdatedSecrets(ctx context.Context) (map[int64]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, dsn_enc FROM connections")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	old := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var enc string
+		if err := rows.Scan(&id, &enc); err != nil {
+			return nil, err
+		}
+		if s.cipher.Outdated(enc) {
+			old[id] = enc
+		}
+	}
+	return old, rows.Err()
+}
+
+// reencrypt seals again, with the current key and format, every connection
+// string written by an older version.
+func (s *Store) reencrypt(ctx context.Context) error {
+	old, err := s.outdatedSecrets(ctx)
+	if err != nil {
+		return err
+	}
+	for id, enc := range old {
+		plain, err := s.cipher.Decrypt(enc)
+		if err != nil {
+			return err
+		}
+		fresh, err := s.cipher.Encrypt(plain)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, "UPDATE connections SET dsn_enc = ? WHERE id = ?", fresh, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }

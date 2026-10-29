@@ -159,11 +159,11 @@ func run() error {
 	if cfg.secretKey == "" {
 		slog.Warn("COMPORTA_SECRET_KEY not set: using a generated key in the data directory; connection strings are only as safe as that volume")
 	}
-	key, err := store.LoadKey(cfg.secretKey, cfg.dataDir)
+	keys, err := store.LoadKeys(cfg.secretKey, cfg.dataDir)
 	if err != nil {
 		return err
 	}
-	cipher, err := store.NewCipher(key)
+	cipher, err := store.NewCipherKeys(keys)
 	if err != nil {
 		return err
 	}
