@@ -1,0 +1,22 @@
+services:
+  dbmcp:
+    build:
+      context: .
+      args:
+        VERSION: ${DBMCP_VERSION:-dev}
+    image: dbmcp:latest
+    container_name: dbmcp
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Only on localhost: the admin UI decides what the LLM may do.
+      - "127.0.0.1:${DBMCP_PORT:-7843}:8080"
+    volumes:
+      - dbmcp-data:/data
+    extra_hosts:
+      # lets connections reach databases running on the host
+      - "host.docker.internal:host-gateway"
+    mem_limit: 256m
+
+volumes:
+  dbmcp-data:
