@@ -5,6 +5,23 @@
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+// iconNode is icon() as a DOM node, for text set with textContent.
+function iconNode(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// showMessage replaces el's content with an icon and text. Text from the
+// server goes in as a text node, never as markup.
+function showMessage(el, iconName, text) {
+  el.replaceChildren(iconNode(iconName), document.createTextNode(` ${text}`));
+}
+
 const icon = (name, cls = "icon") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
 const state = {
@@ -257,7 +274,7 @@ async function loadConnections() {
     state.conns = await api("GET", "api/connections");
     renderConnections();
   } catch (err) {
-    $("#conn-loading").innerHTML = `${icon("error")} Não foi possível carregar as conexões: ${esc(err.message)}`;
+    showMessage($("#conn-loading"), "error", `Não foi possível carregar as conexões: ${err.message}`);
   }
 }
 
@@ -511,10 +528,11 @@ $("#test-btn").addEventListener("click", async () => {
   try {
     const res = await api("POST", "api/test", { id: state.editing?.id || 0, type: b.type, dsn: b.dsn, database: b.database });
     r.className = "test-result " + (res.ok ? "is-ok" : "is-error");
-    r.innerHTML = res.ok ? `${icon("ok")} Conectou em ${fmtDuration(res.ms)}` : `${icon("error")} ${esc(res.error)}`;
+    if (res.ok) showMessage(r, "ok", `Conectou em ${fmtDuration(res.ms)}`);
+    else showMessage(r, "error", res.error);
   } catch (err) {
     r.className = "test-result is-error";
-    r.innerHTML = `${icon("error")} ${esc(err.message)}`;
+    showMessage(r, "error", err.message);
   } finally {
     btn.removeAttribute("aria-busy");
     btn.disabled = false;
@@ -715,9 +733,16 @@ function renderClients() {
   const url = new URL("mcp", location.href).href;
   $("#endpoint").textContent = url;
   const labels = state.meta.mcp_clients || [];
-  $("#client-labels").innerHTML = labels.length
-    ? `<span class="hint">Tokens configurados:</span>` + labels.map((l) => `<span class="badge badge-type">${esc(l)}</span>`).join("")
-    : "";
+  const badges = labels.map((l) => {
+    const b = document.createElement("span");
+    b.className = "badge badge-type";
+    b.textContent = l;
+    return b;
+  });
+  const hint = document.createElement("span");
+  hint.className = "hint";
+  hint.textContent = "Tokens configurados:";
+  $("#client-labels").replaceChildren(...(labels.length ? [hint, ...badges] : []));
   const auth = { Authorization: "Bearer <SEU_TOKEN>" };
   $("#snip-claude").textContent = `claude mcp add --transport http --scope user comporta ${url} \\\n  --header "Authorization: Bearer <SEU_TOKEN>"`;
   $("#snip-vscode").textContent = JSON.stringify({ servers: { comporta: { type: "http", url, headers: auth } } }, null, 2);
@@ -769,5 +794,5 @@ async function boot() {
 try {
   await boot();
 } catch (err) {
-  $("#conn-loading").innerHTML = `${icon("error")} ${esc(err.message)}`;
+  showMessage($("#conn-loading"), "error", err.message);
 }

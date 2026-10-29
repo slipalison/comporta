@@ -124,73 +124,9 @@ func forbidden(dbType model.DBType, toks []token) error {
 }
 
 func analyze(dbType model.DBType, toks []token) Analysis {
-	ops := map[model.Op]bool{}
-	seen := map[string]bool{}
-	leading := ""
-	switch toks[0].kind {
-	case tkLParen:
-		leading = "("
-	case tkWord:
-		leading = toks[0].text
-	}
-
-	for i, t := range toks {
-		if t.kind != tkWord {
-			continue
-		}
-		// a.update / schema.delete are identifiers, not keywords
-		if i > 0 && toks[i-1].kind == tkDot {
-			continue
-		}
-		// INSERT(...), REPLACE(...), TRUNCATE(...) are MySQL functions
-		nextParen := i+1 < len(toks) && toks[i+1].kind == tkLParen
-		kw := t.text
-		seen[kw] = true
-		switch kw {
-		case "INSERT":
-			if !nextParen {
-				ops[model.OpInsert] = true
-			}
-		case "UPDATE":
-			if !nextParen {
-				ops[model.OpUpdate] = true
-			}
-		case "DELETE":
-			ops[model.OpDelete] = true
-		case "MERGE":
-			ops[model.OpInsert], ops[model.OpUpdate], ops[model.OpDelete] = true, true, true
-		case "TRUNCATE":
-			if !nextParen {
-				ops[model.OpDelete], ops[model.OpDDL] = true, true
-			}
-		}
-		if slices.Contains(adminAnywhere, kw) {
-			ops[model.OpDDL] = true
-		}
-		if dbType == model.SQLServer && slices.Contains(mssqlAdminAnywhere, kw) {
-			ops[model.OpDDL] = true
-		}
-	}
-
-	// SELECT ... INTO creates a table (or a file / variable in MySQL).
-	if seen["INTO"] && !seen["INSERT"] && !seen["MERGE"] && leading != "REPLACE" {
-		ops[model.OpInsert], ops[model.OpDDL] = true, true
-	}
-	// T-SQL: a SET outside UPDATE ... SET changes session state.
-	if dbType == model.SQLServer && seen["SET"] && !seen["UPDATE"] && !seen["MERGE"] {
-		ops[model.OpDDL] = true
-	}
-
-	switch {
-	case slices.Contains(readLeaders, leading):
-	case leading == "INSERT", leading == "UPDATE", leading == "DELETE", leading == "MERGE":
-	case leading == "REPLACE": // REPLACE INTO deletes the conflicting row, then inserts
-		ops[model.OpInsert], ops[model.OpDelete] = true, true
-	case leading == "UPSERT":
-		ops[model.OpInsert], ops[model.OpUpdate] = true, true
-	default: // SET, BEGIN, COPY, LOAD, DO, VACUUM, PRAGMA, ATTACH, LOCK, ... or unknown
-		ops[model.OpDDL] = true
-	}
+	leading := leadingKeyword(toks)
+	ops, seen := keywordOps(dbType, toks)
+	statementOps(dbType, leading, seen, ops)
 
 	var list []model.Op
 	for _, op := range []model.Op{model.OpInsert, model.OpUpdate, model.OpDelete, model.OpDDL} {
@@ -202,6 +138,79 @@ func analyze(dbType model.DBType, toks []token) Analysis {
 		Ops:         list,
 		Leading:     leading,
 		ReturnsRows: len(list) == 0 || seen["RETURNING"] || (dbType == model.SQLServer && seen["OUTPUT"]),
+	}
+}
+
+func leadingKeyword(toks []token) string {
+	switch toks[0].kind {
+	case tkLParen:
+		return "("
+	case tkWord:
+		return toks[0].text
+	}
+	return ""
+}
+
+// keywordOps marks the operations that keywords require wherever they appear,
+// and returns every keyword seen.
+func keywordOps(dbType model.DBType, toks []token) (map[model.Op]bool, map[string]bool) {
+	ops := map[model.Op]bool{}
+	seen := map[string]bool{}
+	for i, t := range toks {
+		// a.update / schema.delete are identifiers, not keywords
+		if t.kind != tkWord || (i > 0 && toks[i-1].kind == tkDot) {
+			continue
+		}
+		seen[t.text] = true
+		// INSERT(...), REPLACE(...), TRUNCATE(...) are MySQL functions
+		nextParen := i+1 < len(toks) && toks[i+1].kind == tkLParen
+		for _, op := range keywordWrites(t.text, nextParen) {
+			ops[op] = true
+		}
+		if slices.Contains(adminAnywhere, t.text) || (dbType == model.SQLServer && slices.Contains(mssqlAdminAnywhere, t.text)) {
+			ops[model.OpDDL] = true
+		}
+	}
+	return ops, seen
+}
+
+// keywordWrites is what a single write keyword requires.
+func keywordWrites(kw string, nextParen bool) []model.Op {
+	switch {
+	case kw == "INSERT" && !nextParen:
+		return []model.Op{model.OpInsert}
+	case kw == "UPDATE" && !nextParen:
+		return []model.Op{model.OpUpdate}
+	case kw == "DELETE":
+		return []model.Op{model.OpDelete}
+	case kw == "MERGE":
+		return []model.Op{model.OpInsert, model.OpUpdate, model.OpDelete}
+	case kw == "TRUNCATE" && !nextParen:
+		return []model.Op{model.OpDelete, model.OpDDL}
+	}
+	return nil
+}
+
+// statementOps adds what the statement as a whole requires: SELECT INTO,
+// T-SQL SET, and the leading keyword.
+func statementOps(dbType model.DBType, leading string, seen map[string]bool, ops map[model.Op]bool) {
+	// SELECT ... INTO creates a table (or a file / variable in MySQL).
+	if seen["INTO"] && !seen["INSERT"] && !seen["MERGE"] && leading != "REPLACE" {
+		ops[model.OpInsert], ops[model.OpDDL] = true, true
+	}
+	// T-SQL: a SET outside UPDATE ... SET changes session state.
+	if dbType == model.SQLServer && seen["SET"] && !seen["UPDATE"] && !seen["MERGE"] {
+		ops[model.OpDDL] = true
+	}
+	switch {
+	case slices.Contains(readLeaders, leading):
+	case leading == "INSERT", leading == "UPDATE", leading == "DELETE", leading == "MERGE":
+	case leading == "REPLACE": // REPLACE INTO deletes the conflicting row, then inserts
+		ops[model.OpInsert], ops[model.OpDelete] = true, true
+	case leading == "UPSERT":
+		ops[model.OpInsert], ops[model.OpUpdate] = true, true
+	default: // SET, BEGIN, COPY, LOAD, DO, VACUUM, PRAGMA, ATTACH, LOCK, ... or unknown
+		ops[model.OpDDL] = true
 	}
 }
 
@@ -222,126 +231,138 @@ func isWordChar(dbType model.DBType, c byte) bool {
 // tokenizer thought a region was a literal while the database executes it as
 // code, a write could slip past the classifier.
 func tokenize(dbType model.DBType, s string) ([]token, error) {
+	l := lexer{db: dbType, s: s}
 	var toks []token
-	n := len(s)
-	nestedComments := dbType == model.Postgres || dbType == model.SQLServer
-	backslashEscapes := dbType == model.MySQL
+	for i := 0; i < len(s); {
+		next, tok, err := l.next(i)
+		if err != nil {
+			return nil, err
+		}
+		if tok != nil {
+			toks = append(toks, *tok)
+		}
+		i = next
+	}
+	return toks, nil
+}
 
-	for i := 0; i < n; {
-		c := s[i]
+// lexer reads one token (or one skipped region) at a time.
+type lexer struct {
+	db model.DBType
+	s  string
+}
+
+var other = &token{kind: tkOther}
+
+// next reads what starts at i and returns where the following one starts,
+// with the token read, or nil for whitespace and comments.
+func (l lexer) next(i int) (int, *token, error) {
+	c := l.s[i]
+	switch {
+	case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
+		return i + 1, nil, nil
+	case l.at(i, "--") || (c == '#' && l.db == model.MySQL):
+		return l.skipLine(i), nil, nil
+	case l.at(i, "/*"):
+		end, err := l.skipBlock(i)
+		return end, nil, err
+	}
+	if closing, ok := l.quote(c); ok {
+		// Only MySQL escapes with a backslash, and only inside '...' and "...".
+		end, err := skipQuoted(l.s, i, closing, l.db == model.MySQL && (c == '\'' || c == '"'))
+		return end, other, err
+	}
+	switch {
+	case c == '$' && l.db == model.Postgres:
+		return l.dollar(i)
+	case isWordStart(l.db, c):
+		j := l.span(i+1, func(b byte) bool { return isWordChar(l.db, b) })
+		return j, &token{kind: tkWord, text: strings.ToUpper(l.s[i:j])}, nil
+	case c >= '0' && c <= '9':
+		return l.span(i+1, func(b byte) bool { return isWordChar(l.db, b) || b == '.' }), other, nil
+	}
+	return i + 1, punctuation(c), nil
+}
+
+func (l lexer) at(i int, prefix string) bool { return strings.HasPrefix(l.s[i:], prefix) }
+
+// span returns the first index from i whose byte does not satisfy ok.
+func (l lexer) span(i int, ok func(byte) bool) int {
+	for i < len(l.s) && ok(l.s[i]) {
+		i++
+	}
+	return i
+}
+
+func (l lexer) skipLine(i int) int {
+	return l.span(i, func(b byte) bool { return b != '\n' })
+}
+
+// skipBlock skips a /* comment */. Postgres and SQL Server nest them; MySQL
+// executable comments (/*! ... */) run as code and are refused.
+func (l lexer) skipBlock(i int) (int, error) {
+	if l.db == model.MySQL && (l.at(i, "/*!") || l.at(i, "/*M!")) {
+		return 0, errors.New("MySQL executable comments (/*! ... */) are not allowed")
+	}
+	nested := l.db == model.Postgres || l.db == model.SQLServer
+	depth := 1
+	for i += 2; i < len(l.s) && depth > 0; {
 		switch {
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
-			i++
-
-		case c == '-' && i+1 < n && s[i+1] == '-', c == '#' && dbType == model.MySQL:
-			for i < n && s[i] != '\n' {
-				i++
-			}
-
-		case c == '/' && i+1 < n && s[i+1] == '*':
-			if dbType == model.MySQL && (strings.HasPrefix(s[i:], "/*!") || strings.HasPrefix(s[i:], "/*M!")) {
-				return nil, errors.New("MySQL executable comments (/*! ... */) are not allowed")
-			}
-			depth := 1
+		case l.at(i, "*/"):
+			depth--
 			i += 2
-			for i < n && depth > 0 {
-				switch {
-				case s[i] == '*' && i+1 < n && s[i+1] == '/':
-					depth--
-					i += 2
-				case nestedComments && s[i] == '/' && i+1 < n && s[i+1] == '*':
-					depth++
-					i += 2
-				default:
-					i++
-				}
-			}
-			if depth > 0 {
-				return nil, errors.New("unterminated /* comment")
-			}
-
-		case c == '\'':
-			end, err := skipQuoted(s, i, '\'', backslashEscapes)
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tkOther})
-			i = end
-
-		case c == '"':
-			end, err := skipQuoted(s, i, '"', backslashEscapes)
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tkOther})
-			i = end
-
-		case c == '`' && (dbType == model.MySQL || dbType == model.SQLite):
-			end, err := skipQuoted(s, i, '`', false)
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tkOther})
-			i = end
-
-		case c == '[' && (dbType == model.SQLServer || dbType == model.SQLite):
-			end, err := skipQuoted(s, i, ']', false)
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tkOther})
-			i = end
-
-		case c == '$' && dbType == model.Postgres:
-			// $1 is a parameter; $tag$...$tag$ is a dollar-quoted string
-			j := i + 1
-			for j < n && (isWordChar(dbType, s[j]) && s[j] != '$') {
-				j++
-			}
-			if j < n && s[j] == '$' && (j == i+1 || s[i+1] < '0' || s[i+1] > '9') {
-				tag := s[i : j+1]
-				end := strings.Index(s[j+1:], tag)
-				if end < 0 {
-					return nil, errors.New("unterminated dollar-quoted string")
-				}
-				toks = append(toks, token{kind: tkOther})
-				i = j + 1 + end + len(tag)
-			} else {
-				toks = append(toks, token{kind: tkOther})
-				i = j
-			}
-
-		case isWordStart(dbType, c):
-			j := i + 1
-			for j < n && isWordChar(dbType, s[j]) {
-				j++
-			}
-			toks = append(toks, token{kind: tkWord, text: strings.ToUpper(s[i:j])})
-			i = j
-
-		case c >= '0' && c <= '9':
-			j := i + 1
-			for j < n && (isWordChar(dbType, s[j]) || s[j] == '.') {
-				j++
-			}
-			toks = append(toks, token{kind: tkOther})
-			i = j
-
-		case c == ';':
-			toks = append(toks, token{kind: tkSemicolon})
-			i++
-		case c == '(':
-			toks = append(toks, token{kind: tkLParen})
-			i++
-		case c == '.':
-			toks = append(toks, token{kind: tkDot})
-			i++
+		case nested && l.at(i, "/*"):
+			depth++
+			i += 2
 		default:
-			toks = append(toks, token{kind: tkOther})
 			i++
 		}
 	}
-	return toks, nil
+	if depth > 0 {
+		return 0, errors.New("unterminated /* comment")
+	}
+	return i, nil
+}
+
+// quote returns the closing character when c opens a string or a quoted
+// identifier in this dialect.
+func (l lexer) quote(c byte) (byte, bool) {
+	switch {
+	case c == '\'' || c == '"':
+		return c, true
+	case c == '`' && (l.db == model.MySQL || l.db == model.SQLite):
+		return '`', true
+	case c == '[' && (l.db == model.SQLServer || l.db == model.SQLite):
+		return ']', true
+	}
+	return 0, false
+}
+
+// dollar reads $1 (a parameter) or $tag$...$tag$ (a dollar-quoted string).
+func (l lexer) dollar(i int) (int, *token, error) {
+	j := l.span(i+1, func(b byte) bool { return isWordChar(l.db, b) && b != '$' })
+	isParam := j > i+1 && l.s[i+1] >= '0' && l.s[i+1] <= '9'
+	if j >= len(l.s) || l.s[j] != '$' || isParam {
+		return j, other, nil
+	}
+	tag := l.s[i : j+1]
+	end := strings.Index(l.s[j+1:], tag)
+	if end < 0 {
+		return 0, nil, errors.New("unterminated dollar-quoted string")
+	}
+	return j + 1 + end + len(tag), other, nil
+}
+
+func punctuation(c byte) *token {
+	switch c {
+	case ';':
+		return &token{kind: tkSemicolon}
+	case '(':
+		return &token{kind: tkLParen}
+	case '.':
+		return &token{kind: tkDot}
+	}
+	return other
 }
 
 // skipQuoted returns the index just after the closing quote. A doubled

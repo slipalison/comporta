@@ -142,13 +142,17 @@ func main() {
 		os.Exit(healthcheck())
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	if err := run(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	err := run(ctx)
+	stop()
+	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+// run serves until ctx is cancelled, then shuts down gracefully.
+func run(ctx context.Context) error {
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -175,9 +179,6 @@ func run() error {
 
 	reg := db.NewRegistry(st.Path)
 	defer reg.Close()
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	mcpServer := mcpsrv.New(st, reg, version, cfg.maxRowsCap)
 	if err := mcpServer.Refresh(ctx); err != nil {

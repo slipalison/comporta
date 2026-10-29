@@ -24,7 +24,8 @@ on:
     branches: [main]
   pull_request:
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
