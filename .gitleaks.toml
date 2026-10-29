@@ -1,0 +1,10 @@
+# Exceções do Gitleaks, por VALOR e só para a regra que acusou: um segredo de
+# verdade posto no mesmo arquivo depois continua sendo pego.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Token MCP de exemplo, os 16 caracteres 0-9a-f em ordem (o mínimo que o servidor aceita). Aparece no README (comando de desenvolvimento, desde o commit original do db-mcp) e em main_test.go. Não autentica nada: o servidor só aceita os tokens que o operador define no ambiente."
+targetRules = ["generic-api-key"]
+regexes = ['''^0123456789abcdef$''']
