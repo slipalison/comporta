@@ -256,3 +256,40 @@ func TestSQLParams(t *testing.T) {
 		t.Fatalf("sqlParams = %#v", got)
 	}
 }
+
+// The MongoDB tools check arguments and permissions before the first round
+// trip, so these run without a server: the DSN points at a closed port, and
+// a case that reached it would time out instead of returning its error.
+func TestMongoGuards(t *testing.T) {
+	conn := model.Connection{Name: "eventos", Type: model.MongoDB, DSN: "mongodb://127.0.0.1:1/app",
+		Enabled: true, AllowUpdate: true, AllowDelete: true, MaxRows: 10, TimeoutSec: 5}
+	_, s := newFixture(t, conn)
+
+	want := []string{"describe_schema", "list_connections", "mongo_aggregate", "mongo_count", "mongo_delete", "mongo_find", "mongo_update"}
+	if got := toolNames(t, s); !slices.Equal(got, want) {
+		t.Fatalf("tools: %v", got)
+	}
+	cases := []struct {
+		tool string
+		args map[string]any
+		want string
+	}{
+		{"mongo_find", map[string]any{"connection": "eventos"}, "collection is required"},
+		{"mongo_find", map[string]any{"connection": "nada", "collection": "c"}, "unknown or disabled connection"},
+		{"mongo_find", map[string]any{"connection": "eventos", "collection": "c", "filter": "não é objeto"}, "filter:"},
+		{"mongo_find", map[string]any{"connection": "eventos", "collection": "c", "sort": map[string]any{"a": map[string]any{"$oid": "zz"}}}, "sort:"},
+		{"mongo_aggregate", map[string]any{"connection": "eventos", "collection": "c", "pipeline": []any{map[string]any{"$out": "x"}}}, "DENIED"},
+		{"mongo_aggregate", map[string]any{"connection": "eventos", "collection": "c", "pipeline": "não é lista"}, "pipeline:"},
+		{"mongo_count", map[string]any{"connection": "eventos", "collection": "c", "filter": map[string]any{"_id": map[string]any{"$oid": "zz"}}}, "filter:"},
+		{"mongo_update", map[string]any{"connection": "eventos", "collection": "c", "filter": map[string]any{}, "update": map[string]any{"$set": map[string]any{"a": 1}}}, "empty filter"},
+		{"mongo_update", map[string]any{"connection": "eventos", "collection": "c", "filter": map[string]any{"a": 1}, "update": map[string]any{"$set": map[string]any{"a": 2}}, "upsert": true}, "DENIED"},
+		{"mongo_update", map[string]any{"connection": "eventos", "collection": "c", "filter": map[string]any{"a": 1}, "update": map[string]any{}}, "non-empty object"},
+		{"mongo_delete", map[string]any{"connection": "eventos", "collection": "c", "filter": map[string]any{}}, "empty filter"},
+	}
+	for _, tc := range cases {
+		out, isErr := callTool(t, s, tc.tool, tc.args)
+		if !isErr || !strings.Contains(out, tc.want) {
+			t.Errorf("%s %v: got %q, want error containing %q", tc.tool, tc.args, out, tc.want)
+		}
+	}
+}
