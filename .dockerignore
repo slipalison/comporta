@@ -6,3 +6,4 @@ data
 docker-compose*.yml
 **/*_test.go
 .golangci.yml
+docs

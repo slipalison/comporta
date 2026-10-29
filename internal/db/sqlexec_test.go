@@ -22,23 +22,17 @@ func TestRunSQLOnSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	pool, err := r.SQL(c)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	if _, err := RunSQL(ctx, pool, c.Type, SQLRequest{Query: "CREATE TABLE t (id INTEGER, nome TEXT, foto BLOB)", Write: true}); err != nil {
 		t.Fatal(err)
 	}
 	res, err := RunSQL(ctx, pool, c.Type, SQLRequest{Query: "INSERT INTO t VALUES (1, 'a', x'ff00'), (2, 'b', NULL), (3, 'c', NULL)", Write: true, DryRun: true})
-	if err != nil || *res.Committed || *res.RowsAffected != 3 {
-		t.Fatalf("dry run: %+v %v", res, err)
-	}
+	failIf(t, err != nil || *res.Committed || *res.RowsAffected != 3, "dry run: %+v %v", res, err)
 	if _, err := RunSQL(ctx, pool, c.Type, SQLRequest{Query: "INSERT INTO t VALUES (1, 'a', x'ff00'), (2, 'b', NULL), (3, 'c', NULL)", Write: true}); err != nil {
 		t.Fatal(err)
 	}
 	res, err = RunSQL(ctx, pool, c.Type, SQLRequest{Query: "SELECT * FROM t ORDER BY id", MaxRows: 2})
-	if err != nil || res.RowCount != 2 || !res.Truncated || res.Columns[1].Name != "nome" {
-		t.Fatalf("read: %+v %v", res, err)
-	}
+	failIf(t, err != nil || res.RowCount != 2 || !res.Truncated || res.Columns[1].Name != "nome", "read: %+v %v", res, err)
 	if got := res.Rows[0][2]; got != "base64:/wA=" {
 		t.Fatalf("binary cell: %#v", got)
 	}
@@ -47,18 +41,12 @@ func TestRunSQLOnSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, _ = RunSQL(ctx, pool, c.Type, SQLRequest{Query: "SELECT COUNT(*) FROM t", MaxRows: 1})
-	if res.Rows[0][0] != int64(3) {
-		t.Fatalf("read transaction must roll back: %v", res.Rows)
-	}
+	failIf(t, res.Rows[0][0] != int64(3), "read transaction must roll back: %v", res.Rows)
 
 	tables, err := DescribeSQL(ctx, pool, c.Type, "", "")
-	if err != nil || tables.RowCount != 1 {
-		t.Fatalf("describe: %+v %v", tables, err)
-	}
+	failIf(t, err != nil || tables.RowCount != 1, "describe: %+v %v", tables, err)
 	cols, err := DescribeSQL(ctx, pool, c.Type, "", "t")
-	if err != nil || cols.RowCount != 3 {
-		t.Fatalf("describe columns: %+v %v", cols, err)
-	}
+	failIf(t, err != nil || cols.RowCount != 3, "describe columns: %+v %v", cols, err)
 
 	// Editing the DSN replaces the pool; Forget closes it.
 	c.DSN = filepath.Join(dir, "outro.db")
@@ -87,9 +75,7 @@ func TestJSONValue(t *testing.T) {
 	}
 	long := strings.Repeat("é", MaxCellChars)
 	got := truncate(long)
-	if !utf8.ValidString(got) || !strings.Contains(got, "truncated") {
-		t.Fatalf("truncate broke UTF-8 or did not mark the cut")
-	}
+	failIf(t, !utf8.ValidString(got) || !strings.Contains(got, "truncated"), "truncate broke UTF-8 or did not mark the cut")
 }
 
 func TestValidateAndMongoDatabase(t *testing.T) {
@@ -108,5 +94,13 @@ func TestValidateAndMongoDatabase(t *testing.T) {
 	}
 	if _, err := r.SQL(model.Connection{Type: model.MongoDB}); err == nil {
 		t.Fatal("MongoDB is not SQL")
+	}
+}
+
+// failIf stops the test with the message when bad is true.
+func failIf(t *testing.T, bad bool, format string, args ...any) {
+	t.Helper()
+	if bad {
+		t.Fatalf(format, args...)
 	}
 }

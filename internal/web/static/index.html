@@ -7,7 +7,7 @@
 <title>Comporta</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
-<script src="app.js" defer></script>
+<script type="module" src="app.js"></script>
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false">
@@ -46,8 +46,8 @@
       <a href="#/auditoria" data-route="auditoria">Auditoria</a>
       <a href="#/clientes" data-route="clientes">Conectar clientes</a>
     </nav>
-    <div class="pulse" id="pulse" role="group" aria-label="Chamadas MCP nas últimas 24 horas" hidden>
-      <span class="pulse-label">24 h</span>
+    <div class="pulse" id="pulse" hidden>
+      <span class="pulse-label"><span class="sr-only">Chamadas MCP nas últimas </span>24 h</span>
       <a class="pulse-item" id="pulse-total" href="#/auditoria"></a>
       <a class="pulse-item is-denied" id="pulse-denied" href="#/auditoria?status=denied"></a>
       <a class="pulse-item is-error" id="pulse-error" href="#/auditoria?status=error"></a>
@@ -69,9 +69,9 @@
       </button>
     </div>
 
-    <div id="conn-loading" class="loading" role="status">
+    <output id="conn-loading" class="loading">
       <span class="spinner" aria-hidden="true"></span> Carregando conexões…
-    </div>
+    </output>
 
     <div id="conn-empty" class="onboard" hidden>
       <h2>Comece por aqui</h2>
@@ -97,7 +97,7 @@
       </div>
       <div class="head-actions">
         <label class="switch-label">
-          <input type="checkbox" role="switch" class="switch" id="live" checked>
+          <input type="checkbox" class="switch" id="live" checked>
           <span>Atualizar sozinho</span>
         </label>
         <a class="btn" id="export" href="api/audit/export" download>
@@ -148,7 +148,7 @@
       </div>
     </form>
 
-    <p class="audit-summary" id="audit-summary" role="status"></p>
+    <output class="audit-summary" id="audit-summary"></output>
 
     <div class="table-wrap">
       <table class="audit" id="audit">
@@ -202,21 +202,21 @@
     <div class="snippets">
       <div class="card">
         <h2 class="card-title">Claude Code</h2>
-        <pre class="code" id="snip-claude" tabindex="0"></pre>
+        <pre class="code" id="snip-claude"></pre>
         <button type="button" class="btn btn-sm" data-copy="#snip-claude" aria-label="Copiar comando do Claude Code">
           <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
         </button>
       </div>
       <div class="card">
         <h2 class="card-title">VS Code e GitHub Copilot <span class="muted">(mcp.json)</span></h2>
-        <pre class="code" id="snip-vscode" tabindex="0"></pre>
+        <pre class="code" id="snip-vscode"></pre>
         <button type="button" class="btn btn-sm" data-copy="#snip-vscode" aria-label="Copiar configuração do VS Code">
           <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
         </button>
       </div>
       <div class="card">
         <h2 class="card-title">Copilot CLI, Gemini CLI e outros <span class="muted">(mcpServers)</span></h2>
-        <pre class="code" id="snip-generic" tabindex="0"></pre>
+        <pre class="code" id="snip-generic"></pre>
         <button type="button" class="btn btn-sm" data-copy="#snip-generic" aria-label="Copiar configuração genérica">
           <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
         </button>
@@ -286,7 +286,7 @@
           <button type="button" class="btn" id="test-btn">
             <svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Testar conexão
           </button>
-          <p class="test-result" id="test-result" role="status"></p>
+          <output class="test-result" id="test-result"></output>
         </div>
       </fieldset>
 
@@ -299,19 +299,19 @@
           </li>
           <li class="perm">
             <label class="perm-text" for="c-insert"><b>Inserir</b> <code>INSERT</code><small>Criar linhas ou documentos.</small></label>
-            <input type="checkbox" role="switch" class="switch" id="c-insert" name="allow_insert">
+            <input type="checkbox" class="switch" id="c-insert" name="allow_insert">
           </li>
           <li class="perm">
             <label class="perm-text" for="c-update"><b>Alterar</b> <code>UPDATE</code><small>Mudar linhas ou documentos que já existem.</small></label>
-            <input type="checkbox" role="switch" class="switch" id="c-update" name="allow_update">
+            <input type="checkbox" class="switch" id="c-update" name="allow_update">
           </li>
           <li class="perm is-risky">
             <label class="perm-text" for="c-delete"><b>Apagar</b> <code>DELETE</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>Remove dados; não tem desfazer.</small></label>
-            <input type="checkbox" role="switch" class="switch switch-risky" id="c-delete" name="allow_delete">
+            <input type="checkbox" class="switch switch-risky" id="c-delete" name="allow_delete">
           </li>
           <li class="perm is-risky">
             <label class="perm-text" for="c-ddl"><b>Estrutura e administração</b> <code>DDL</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>CREATE, DROP, ALTER, EXEC, GRANT, SET… Poder total no banco.</small></label>
-            <input type="checkbox" role="switch" class="switch switch-risky" id="c-ddl" name="allow_ddl">
+            <input type="checkbox" class="switch switch-risky" id="c-ddl" name="allow_ddl">
           </li>
         </ul>
       </fieldset>
@@ -333,7 +333,7 @@
           </div>
         </div>
         <label class="switch-label switch-block">
-          <input type="checkbox" role="switch" class="switch" id="c-enabled" name="enabled" checked>
+          <input type="checkbox" class="switch" id="c-enabled" name="enabled" checked>
           <span><b>Conexão ativa</b><small>Desligada, a IA deixa de enxergá-la na hora.</small></span>
         </label>
       </fieldset>
@@ -351,7 +351,7 @@
   <form method="dialog">
     <div class="dialog-body">
       <div class="confirm-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert"/></svg></div>
-      <h2 id="confirm-title"></h2>
+      <h2 id="confirm-title">Confirmar</h2>
       <div id="confirm-body"></div>
     </div>
     <footer class="dialog-foot">

@@ -18,6 +18,12 @@ import (
 	"github.com/slipalison/comporta/internal/model"
 )
 
+// Prefixes of argument errors returned to the LLM.
+const (
+	errInvalidArgs = "invalid arguments: "
+	errFilter      = "filter: "
+)
+
 type describeArgs struct {
 	Connection string `json:"connection"`
 	Object     string `json:"object"`
@@ -30,7 +36,7 @@ func (s *Server) handleDescribe(ctx context.Context, req *mcp.CallToolRequest) (
 	c := s.begin(req)
 	var a describeArgs
 	if err := decode(req.Params.Arguments, &a); err != nil {
-		return c.fail(model.StatusError, "invalid arguments: "+err.Error())
+		return c.fail(model.StatusError, errInvalidArgs+err.Error())
 	}
 	c.entry.Operation = "schema"
 	c.entry.Statement = strings.Join(strings.Fields("describe "+a.Schema+" "+a.Object), " ")
@@ -104,7 +110,7 @@ func (s *Server) sqlPrelude(ctx context.Context, req *mcp.CallToolRequest) (*cal
 	var conn model.Connection
 	var an guard.Analysis
 	if err := decode(req.Params.Arguments, &a); err != nil {
-		res, _ := c.fail(model.StatusError, "invalid arguments: "+err.Error())
+		res, _ := c.fail(model.StatusError, errInvalidArgs+err.Error())
 		return c, a, conn, an, res
 	}
 	c.entry.Statement = a.SQL
@@ -247,7 +253,7 @@ func (s *Server) mongoTool(name string, op mongoOp) mcp.ToolHandler {
 		c := s.begin(req)
 		var a mongoArgs
 		if err := decode(req.Params.Arguments, &a); err != nil {
-			return c.fail(model.StatusError, "invalid arguments: "+err.Error())
+			return c.fail(model.StatusError, errInvalidArgs+err.Error())
 		}
 		// fallbacks for calls that fail before the operation describes itself
 		c.entry.Connection, c.entry.Statement = a.Connection, compact(req.Params.Arguments)
@@ -288,7 +294,7 @@ func (s *Server) mongoFind(ctx context.Context, c *call, a mongoArgs, conn model
 	var req db.FindRequest
 	var err error
 	if req.Filter, err = db.ParseDoc(a.Filter); err != nil {
-		return c.fail(model.StatusError, "filter: "+err.Error())
+		return c.fail(model.StatusError, errFilter+err.Error())
 	}
 	if req.Projection, err = db.ParseDoc(a.Projection); err != nil {
 		return c.fail(model.StatusError, "projection: "+err.Error())
@@ -329,7 +335,7 @@ func (s *Server) mongoCount(ctx context.Context, c *call, a mongoArgs, conn mode
 	c.entry.Statement = fmt.Sprintf("db.%s.countDocuments(%s)", ns(coll), compact(a.Filter))
 	f, err := db.ParseDoc(a.Filter)
 	if err != nil {
-		return c.fail(model.StatusError, "filter: "+err.Error())
+		return c.fail(model.StatusError, errFilter+err.Error())
 	}
 	n, err := coll.CountDocuments(ctx, f)
 	if err != nil {
@@ -385,7 +391,7 @@ func (s *Server) mongoUpdate(ctx context.Context, c *call, a mongoArgs, conn mod
 	}
 	f, err := db.ParseDoc(a.Filter)
 	if err != nil {
-		return c.fail(model.StatusError, "filter: "+err.Error())
+		return c.fail(model.StatusError, errFilter+err.Error())
 	}
 	if len(f) == 0 && !a.AllDocuments {
 		return c.fail(model.StatusError, db.ErrEmptyFilter.Error())
@@ -424,7 +430,7 @@ func (s *Server) mongoDelete(ctx context.Context, c *call, a mongoArgs, conn mod
 	}
 	f, err := db.ParseDoc(a.Filter)
 	if err != nil {
-		return c.fail(model.StatusError, "filter: "+err.Error())
+		return c.fail(model.StatusError, errFilter+err.Error())
 	}
 	if len(f) == 0 && !a.AllDocuments {
 		return c.fail(model.StatusError, db.ErrEmptyFilter.Error())

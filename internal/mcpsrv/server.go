@@ -166,8 +166,8 @@ func boolean(desc string) *jsonschema.Schema {
 func object(desc string) *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", Description: desc}
 }
-func integer(desc string, max int) *jsonschema.Schema {
-	return &jsonschema.Schema{Type: "integer", Description: desc, Minimum: jsonschema.Ptr(0.0), Maximum: jsonschema.Ptr(float64(max))}
+func integer(desc string, maxValue int) *jsonschema.Schema {
+	return &jsonschema.Schema{Type: "integer", Description: desc, Minimum: jsonschema.Ptr(0.0), Maximum: jsonschema.Ptr(float64(maxValue))}
 }
 func input(required []string, props map[string]*jsonschema.Schema) *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", Properties: props, Required: required}
@@ -263,6 +263,7 @@ func (s *Server) buildTools(conns []model.Connection) []toolDef {
 		}
 		return base
 	}
+	const mongoPurpose = "MongoDB connection. One of:"
 	filterDoc := object(`MongoDB Extended JSON filter, e.g. {"status": "paid", "_id": {"$oid": "65f0..."}, "createdAt": {"$gte": {"$date": "2024-01-01T00:00:00Z"}}}. Empty object matches all.`)
 
 	defs = append(defs,
@@ -270,7 +271,7 @@ func (s *Server) buildTools(conns []model.Connection) []toolDef {
 			Name: "mongo_find",
 			Description: "Find documents in a MongoDB collection. `filter`, `projection` and `sort` are MongoDB Extended JSON objects. " +
 				"Returns {documents, count, truncated}. MongoDB connections only: never send SQL here.",
-			InputSchema: input([]string{"connection", "collection"}, with(mongoCommon(mongoConns, "MongoDB connection. One of:"), map[string]*jsonschema.Schema{
+			InputSchema: input([]string{"connection", "collection"}, with(mongoCommon(mongoConns, mongoPurpose), map[string]*jsonschema.Schema{
 				"filter":     filterDoc,
 				"projection": object(`Fields to include/exclude, e.g. {"name": 1, "_id": 0}.`),
 				"sort":       object(`Sort order, e.g. {"createdAt": -1}.`),
@@ -283,7 +284,7 @@ func (s *Server) buildTools(conns []model.Connection) []toolDef {
 			Name: "mongo_aggregate",
 			Description: "Run an aggregation pipeline (JSON array of stage objects, Extended JSON) on a MongoDB collection and return the resulting documents. " +
 				"Read-only unless the pipeline uses $merge (needs insert+update) or $out (needs insert+delete+ddl).",
-			InputSchema: input([]string{"connection", "collection", "pipeline"}, with(mongoCommon(mongoConns, "MongoDB connection. One of:"), map[string]*jsonschema.Schema{
+			InputSchema: input([]string{"connection", "collection", "pipeline"}, with(mongoCommon(mongoConns, mongoPurpose), map[string]*jsonschema.Schema{
 				"pipeline": {Type: "array", Description: `Stages, e.g. [{"$match": {"status": "paid"}}, {"$group": {"_id": "$customerId", "total": {"$sum": "$amount"}}}].`, Items: &jsonschema.Schema{Type: "object"}},
 				"limit":    integer("Maximum documents to return (capped by the connection's limit).", s.maxCap),
 			})),
@@ -292,7 +293,7 @@ func (s *Server) buildTools(conns []model.Connection) []toolDef {
 		toolDef{&mcp.Tool{
 			Name:        "mongo_count",
 			Description: "Count the documents matching a filter (Extended JSON) in a MongoDB collection.",
-			InputSchema: input([]string{"connection", "collection"}, with(mongoCommon(mongoConns, "MongoDB connection. One of:"), map[string]*jsonschema.Schema{
+			InputSchema: input([]string{"connection", "collection"}, with(mongoCommon(mongoConns, mongoPurpose), map[string]*jsonschema.Schema{
 				"filter": filterDoc,
 			})),
 			Annotations: readOnly("Count MongoDB documents"),

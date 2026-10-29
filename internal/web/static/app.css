@@ -88,7 +88,9 @@ a { color: var(--accent-soft-text); text-underline-offset: 2px; }
 code, pre { font-family: var(--mono); font-size: 0.875rem; }
 code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
 small { font-size: 0.8125rem; }
-[hidden] { display: none !important; }
+/* Two attribute selectors under html outweigh any single class rule that sets
+   display, so the hidden attribute always wins without !important. */
+html [hidden][hidden] { display: none; }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -107,9 +109,9 @@ small { font-size: 0.8125rem; }
   position: absolute; left: var(--s4); top: -100px; z-index: 100;
   background: var(--accent); color: var(--on-accent); padding: var(--s2) var(--s4);
   border-radius: var(--r1); font-weight: 600; text-decoration: none;
+  min-height: 44px; display: inline-flex; align-items: center;
 }
 .skip:focus { top: var(--s2); }
-.skip { min-height: 44px; display: inline-flex; align-items: center; }
 
 .wrap { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--s5); }
 
@@ -329,7 +331,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .field-error::before { content: "⚠"; font-weight: 700; }
 
 /* ---------------------------------------------------------------- audit */
-.audit-summary { color: var(--muted); font-size: 0.875rem; min-height: 1.5em; }
+.audit-summary { display: block; color: var(--muted); font-size: 0.875rem; min-height: 1.5em; }
 .table-wrap {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3);
   box-shadow: var(--shadow); overflow-x: auto;
@@ -370,7 +372,7 @@ tr.detail td { background: var(--accent-soft); padding-top: 0; }
 .detail-grid dt { color: var(--muted); font-weight: 650; font-size: 0.8125rem; padding-top: var(--s2); }
 .detail-grid dd { margin: 0; min-width: 0; }
 .detail-grid pre {
-  margin: 0; white-space: pre-wrap; word-break: break-word;
+  margin: 0; white-space: pre-wrap; overflow-wrap: anywhere;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r1); padding: var(--s3);
   max-height: 320px; overflow: auto;
 }
@@ -391,7 +393,8 @@ tr.detail td { background: var(--accent-soft); padding-top: 0; }
 .snippets { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
 pre.code {
   margin: 0; width: 100%; padding: var(--s3) var(--s4); border-radius: var(--r1);
-  background: var(--surface-2); border: 1px solid var(--border); overflow-x: auto; font-size: 0.8125rem; line-height: 1.55;
+  background: var(--surface-2); border: 1px solid var(--border); font-size: 0.8125rem; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .prose { max-width: 80ch; }
 .prose p { color: var(--muted); }
@@ -499,7 +502,8 @@ legend + * { clear: both; }
     padding: var(--s3) var(--s4); margin-bottom: var(--s2);
   }
   table.audit tr.entry.is-open { border-radius: var(--r2) var(--r2) 0 0; margin-bottom: 0; }
-  table.audit td { display: block; border: 0; padding: 0; background: transparent !important; }
+  table.audit td { display: block; border: 0; padding: 0; }
+  table.audit tr.entry td, table.audit tr.entry:hover td, table.audit tr.entry.is-open td { background: transparent; }
   table.audit td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: 0.8125rem; }
   table.audit .c-status { grid-column: 2; grid-row: 1; justify-self: end; }
   table.audit .c-when { grid-column: 1; grid-row: 1; }
@@ -507,13 +511,15 @@ legend + * { clear: both; }
   table.audit .stmt { max-width: none; }
   table.audit .num { text-align: left; }
   table.audit tr.detail { display: block; margin-bottom: var(--s2); }
-  table.audit tr.detail td { display: block; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--r2) var(--r2); padding: var(--s3) var(--s4); background: var(--accent-soft) !important; }
+  table.audit tr.detail td { display: block; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--r2) var(--r2); padding: var(--s3) var(--s4); background: var(--accent-soft); }
   .detail-grid { grid-template-columns: 1fr; gap: var(--s1); }
   .detail-grid dt { padding-top: var(--s2); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .spinner, .toast { animation: none; }
+  .btn, .switch, .switch::after, .disclose .icon, .chip { transition: none; }
+  .btn:active { transform: none; }
 }
 
 @media (forced-colors: active) {

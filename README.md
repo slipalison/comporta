@@ -9,6 +9,12 @@ Comporta é a porta que controla a passagem da água num canal: abre, fecha, dei
 - **Várias conexões ao mesmo tempo**, cada uma com o seu pool.
 - **Imagem de ~10 MB** (≈25 MB descompactada): binário Go estático em distroless, sem shell.
 
+![Conexões: cada banco com o nível de risco e as permissões da IA](docs/img/conexoes.png)
+
+| Auditoria | Nova conexão, tema escuro | Celular |
+|---|---|---|
+| ![Auditoria com filtros e o detalhe de uma chamada](docs/img/auditoria.png) | ![Formulário de nova conexão no tema escuro](docs/img/nova-conexao-escuro.png) | ![Lista de conexões no celular](docs/img/celular.png) |
+
 ## Subir
 
 ```bash

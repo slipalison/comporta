@@ -1,4 +1,3 @@
-"use strict";
 // Comporta admin UI. No framework and no build step: the file is embedded in
 // the Go binary and served under a CSP without 'unsafe-inline', so all markup
 // is built here and every value from the API goes through esc().
@@ -129,10 +128,11 @@ function confirmDialog({ title, body, ok }) {
 
 // ------------------------------------------------------------------ router
 const ROUTES = ["conexoes", "auditoria", "clientes"];
+const ROUTE_SET = new Set(ROUTES);
 
 function parseHash() {
   const [path, query = ""] = location.hash.replace(/^#\/?/, "").split("?");
-  return { route: ROUTES.includes(path) ? path : "conexoes", params: new URLSearchParams(query) };
+  return { route: ROUTE_SET.has(path) ? path : "conexoes", params: new URLSearchParams(query) };
 }
 
 function navigate(fromUser) {
@@ -147,7 +147,7 @@ function navigate(fromUser) {
   document.title = { conexoes: "Conexões", auditoria: "Auditoria", clientes: "Conectar clientes" }[route] + " · Comporta";
   if (route === "auditoria") {
     applyFiltersFromParams(params);
-    loadAudit(true);
+    void loadAudit(true);
   }
   scheduleAudit();
   // Moving focus to the new heading tells screen reader users the page changed.
@@ -183,7 +183,7 @@ function riskOf(c) {
 
 function activityHTML(c) {
   const a = state.activity[c.name];
-  if (!a || !a.last_call) return `<span>Nenhuma chamada ainda</span>`;
+  if (!a?.last_call) return `<span>Nenhuma chamada ainda</span>`;
   const parts = [`<span>${plural(a.calls_24h, "chamada", "chamadas")} em 24 h</span>`];
   if (a.denied_24h) parts.push(`<span class="is-denied">${icon("deny")} ${plural(a.denied_24h, "negada", "negadas")}</span>`);
   if (a.errors_24h) parts.push(`<span class="is-error">${icon("error")} ${plural(a.errors_24h, "erro", "erros")}</span>`);
@@ -216,7 +216,7 @@ function connCard(c) {
     </div>
     <div class="conn-state">
       <label class="switch-label">
-        <input type="checkbox" role="switch" class="switch" data-act="enabled" ${c.enabled ? "checked" : ""} aria-describedby="state-${c.id}">
+        <input type="checkbox" class="switch" data-act="enabled" ${c.enabled ? "checked" : ""} aria-describedby="state-${c.id}">
         <span id="state-${c.id}">${c.enabled ? "Visível para a IA" : "Oculta da IA"}</span>
       </label>
     </div>
@@ -280,9 +280,10 @@ async function putField(c, field, value, control, { undo = true } = {}) {
     Object.assign(c, saved);
     renderConnections();
     const op = OPS.find((o) => o.field === field);
-    const what = op ? `${op.sql} ${value ? "liberado" : "bloqueado"}` : value ? "Conexão visível para a IA" : "Conexão oculta da IA";
+    let what = value ? "Conexão visível para a IA" : "Conexão oculta da IA";
+    if (op) what = `${op.sql} ${value ? "liberado" : "bloqueado"}`;
     toast(`${what} em ${c.name}.`, undo ? { action: { label: "Desfazer", run: () => undoField(c.id, field, !value) } } : {});
-    loadStats();
+    void loadStats();
   } catch (err) {
     control.removeAttribute("aria-busy");
     control.disabled = false;
@@ -296,7 +297,7 @@ function undoField(id, field, value) {
   const li = $(`#conn-list .conn[data-id="${id}"]`);
   if (!c || !li) return;
   const control = field === "enabled" ? $('[data-act="enabled"]', li) : $(`[data-field="${field}"]`, li);
-  putField(c, field, value, control, { undo: false });
+  void putField(c, field, value, control, { undo: false });
 }
 
 async function togglePerm(c, field, chip) {
@@ -366,7 +367,7 @@ $("#conn-list").addEventListener("click", (e) => {
 $("#conn-list").addEventListener("change", (e) => {
   if (e.target.dataset.act !== "enabled") return;
   const c = state.conns.find((x) => x.id === Number(e.target.closest(".conn").dataset.id));
-  if (c) putField(c, "enabled", e.target.checked, e.target);
+  if (c) void putField(c, "enabled", e.target.checked, e.target);
 });
 
 $("#view-conexoes").addEventListener("click", (e) => {
@@ -539,7 +540,7 @@ form.addEventListener("submit", async (e) => {
     dlg.close();
     toast(state.editing ? `Conexão ${body.name} atualizada.` : `Conexão ${body.name} criada. A IA já pode usá-la.`);
     await loadConnections();
-    loadStats();
+    void loadStats();
   } catch (err) {
     if (err.field && setFieldError(err.field, err.message)) {
       $(`[aria-invalid="true"]`, form)?.focus();
@@ -567,7 +568,7 @@ async function closeForm() {
 for (const b of $$("[data-close]", dlg)) b.addEventListener("click", closeForm);
 dlg.addEventListener("cancel", (e) => {
   e.preventDefault();
-  closeForm();
+  void closeForm();
 });
 
 // ------------------------------------------------------------------- audit
@@ -615,6 +616,7 @@ function auditRow(e) {
   const st = STATUS[e.status] || { label: e.status, icon: "alert", cls: "" };
   const admin = e.tool === "admin";
   const open = state.openDetails.has(String(e.id));
+  const messageLabel = e.status === "ok" ? "Mensagem" : "Motivo";
   return `<tr class="entry${open ? " is-open" : ""}" data-id="${e.id}">
     <td class="when c-when"><span title="${esc(fmtAbsolute(e.ts))}">${esc(fmtRelative(e.ts))}</span><small>${esc(new Date(e.ts).toLocaleTimeString("pt-BR"))}</small></td>
     <td class="c-status"><span class="badge ${st.cls}">${icon(st.icon)}${esc(st.label)}</span></td>
@@ -631,7 +633,7 @@ function auditRow(e) {
     <dt>Comando</dt><dd><pre id="stmt-${e.id}">${esc(e.statement) || "—"}</pre>
       <div class="detail-actions"><button type="button" class="btn btn-sm" data-copy="#stmt-${e.id}">${icon("copy")}Copiar comando</button></div></dd>
     ${e.params ? `<dt>Parâmetros</dt><dd><pre>${esc(e.params)}</pre></dd>` : ""}
-    ${e.message ? `<dt>${e.status === "ok" ? "Mensagem" : "Motivo"}</dt><dd><pre>${esc(e.message)}</pre></dd>` : ""}
+    ${e.message ? `<dt>${messageLabel}</dt><dd><pre>${esc(e.message)}</pre></dd>` : ""}
     <dt>Cliente</dt><dd>${esc(e.client) || "—"}</dd>
     <dt>Registro</dt><dd>#${e.id} · ${esc(e.db_type) || "sem banco"} · ${esc(fmtAbsolute(e.ts))}</dd>
   </dl></td></tr>`;
@@ -662,9 +664,10 @@ async function loadAudit(reset) {
     $(".table-wrap").hidden = count === 0;
     $("#audit-more").hidden = rows.length < 100;
     const live = $("#live").checked && state.auditPages === 1;
-    $("#audit-summary").textContent = count
-      ? `${plural(count, "registro", "registros")}, do mais recente para o mais antigo.${state.auditPages > 1 ? " Atualização automática pausada enquanto houver páginas antigas abertas." : live ? " Atualiza a cada 5 s." : ""}`
-      : "";
+    let note = "";
+    if (state.auditPages > 1) note = " Atualização automática pausada enquanto houver páginas antigas abertas.";
+    else if (live) note = " Atualiza a cada 5 s.";
+    $("#audit-summary").textContent = count ? `${plural(count, "registro", "registros")}, do mais recente para o mais antigo.${note}` : "";
   } catch (err) {
     $("#audit-summary").textContent = `Não foi possível carregar a auditoria: ${err.message}`;
   }
@@ -689,21 +692,21 @@ let searchTimer;
 $("#filters").addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   const wait = e.target.id === "f-q" ? 300 : 0;
-  searchTimer = setTimeout(() => { syncHash(); loadAudit(true); }, wait);
+  searchTimer = setTimeout(() => { syncHash(); void loadAudit(true); }, wait);
 });
 $("#filters").addEventListener("submit", (e) => e.preventDefault());
 $("#filters").addEventListener("reset", () => {
-  setTimeout(() => { syncHash(); loadAudit(true); $("#f-q").focus(); });
+  setTimeout(() => { syncHash(); void loadAudit(true); $("#f-q").focus(); });
 });
 $("#load-more").addEventListener("click", () => loadAudit(false));
-$("#live").addEventListener("change", () => { scheduleAudit(); loadAudit(true); });
+$("#live").addEventListener("change", () => { scheduleAudit(); void loadAudit(true); });
 
 function scheduleAudit() {
   clearInterval(state.auditTimer);
   if (state.route !== "auditoria" || !$("#live").checked) return;
   state.auditTimer = setInterval(() => {
     if (document.hidden || state.auditPages > 1 || $("#dlg-conn").open) return;
-    loadAudit(true);
+    void loadAudit(true);
   }, 5000);
 }
 
@@ -748,15 +751,11 @@ document.addEventListener("keydown", (e) => {
 
 // -------------------------------------------------------------------- boot
 window.addEventListener("hashchange", () => navigate(true));
-document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadStats(); });
 
-(async () => {
-  try {
-    state.meta = await api("GET", "api/meta");
-  } catch (err) {
-    $("#conn-loading").innerHTML = `${icon("error")} ${esc(err.message)}`;
-    return;
-  }
+// app.js is a module: top-level await runs once, after the document parsed.
+async function boot() {
+  state.meta = await api("GET", "api/meta");
   $("#version").textContent = state.meta.version;
   $("#retention").textContent = `Os registros ficam guardados por ${state.meta.retention_days} dias.`;
   fillTypes();
@@ -764,5 +763,11 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) load
   await loadStats();
   await loadConnections();
   navigate(false);
-  state.statsTimer = setInterval(() => { if (!document.hidden) loadStats(); }, 15000);
-})();
+  state.statsTimer = setInterval(() => { if (!document.hidden) void loadStats(); }, 15000);
+}
+
+try {
+  await boot();
+} catch (err) {
+  $("#conn-loading").innerHTML = `${icon("error")} ${esc(err.message)}`;
+}

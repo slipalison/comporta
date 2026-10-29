@@ -31,20 +31,14 @@ func newFixture(t *testing.T, conn model.Connection) (*fixture, *mcp.ClientSessi
 	t.Helper()
 	dir := t.TempDir()
 	cipher, err := store.NewCipher(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	st, err := store.Open(filepath.Join(dir, "comporta.db"), cipher)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	t.Cleanup(func() { _ = st.Close() })
 
 	target := filepath.Join(dir, "loja.db")
 	tdb, err := sql.Open("sqlite", target)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	if _, err := tdb.ExecContext(context.Background(), `CREATE TABLE pedidos (id INTEGER PRIMARY KEY, cliente TEXT, total REAL);
 		INSERT INTO pedidos (cliente, total) VALUES ('ana', 10.5), ('bia', 20);`); err != nil {
 		t.Fatal(err)
@@ -71,9 +65,7 @@ func newFixture(t *testing.T, conn model.Connection) (*fixture, *mcp.ClientSessi
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	session, err := client.Connect(context.Background(), ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	t.Cleanup(func() { _ = session.Close() })
 	return &fixture{st: st, srv: srv, target: target}, session
 }
@@ -86,9 +78,7 @@ func lojaConn() model.Connection {
 func callTool(t *testing.T, s *mcp.ClientSession, tool string, args map[string]any) (string, bool) {
 	t.Helper()
 	res, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
-	if err != nil {
-		t.Fatalf("%s: %v", tool, err)
-	}
+	failIf(t, err != nil, "%s: %v", tool, err)
 	var b strings.Builder
 	for _, c := range res.Content {
 		if tc, ok := c.(*mcp.TextContent); ok {
@@ -101,9 +91,7 @@ func callTool(t *testing.T, s *mcp.ClientSession, tool string, args map[string]a
 func toolNames(t *testing.T, s *mcp.ClientSession) []string {
 	t.Helper()
 	res, err := s.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	var names []string
 	for _, tool := range res.Tools {
 		names = append(names, tool.Name)
@@ -136,54 +124,34 @@ func TestSQLQueryAndExecute(t *testing.T) {
 	f, s := newFixture(t, lojaConn())
 
 	out, isErr := callTool(t, s, "sql_query", map[string]any{"connection": "loja", "sql": "SELECT cliente FROM pedidos WHERE total > ? ORDER BY id", "params": []any{5}})
-	if isErr || !strings.Contains(out, `"ana"`) || !strings.Contains(out, `"row_count":2`) {
-		t.Fatalf("query: %s", out)
-	}
+	failIf(t, isErr || !strings.Contains(out, `"ana"`) || !strings.Contains(out, `"row_count":2`), "query: %s", out)
 
 	out, isErr = callTool(t, s, "sql_query", map[string]any{"connection": "loja", "sql": "DELETE FROM pedidos"})
-	if !isErr || !strings.HasPrefix(out, "DENIED") {
-		t.Fatalf("a write through sql_query must be denied: %s", out)
-	}
+	failIf(t, !isErr || !strings.HasPrefix(out, "DENIED"), "a write through sql_query must be denied: %s", out)
 
 	out, isErr = callTool(t, s, "sql_execute", map[string]any{"connection": "loja", "sql": "DELETE FROM pedidos WHERE id = 1"})
-	if !isErr || !strings.Contains(out, "does not allow delete") {
-		t.Fatalf("delete without permission: %s", out)
-	}
+	failIf(t, !isErr || !strings.Contains(out, "does not allow delete"), "delete without permission: %s", out)
 
 	out, isErr = callTool(t, s, "sql_execute", map[string]any{"connection": "loja", "sql": "INSERT INTO pedidos (cliente, total) VALUES (?, ?)", "params": []any{"caio", 33}, "dry_run": true})
-	if isErr || !strings.Contains(out, `"committed":false`) {
-		t.Fatalf("dry run: %s", out)
-	}
+	failIf(t, isErr || !strings.Contains(out, `"committed":false`), "dry run: %s", out)
 	out, isErr = callTool(t, s, "sql_execute", map[string]any{"connection": "loja", "sql": "INSERT INTO pedidos (cliente, total) VALUES (?, ?)", "params": []any{"caio", 33}})
-	if isErr || !strings.Contains(out, `"committed":true`) || !strings.Contains(out, `"rows_affected":1`) {
-		t.Fatalf("insert: %s", out)
-	}
+	failIf(t, isErr || !strings.Contains(out, `"committed":true`) || !strings.Contains(out, `"rows_affected":1`), "insert: %s", out)
 	out, _ = callTool(t, s, "sql_query", map[string]any{"connection": "loja", "sql": "SELECT COUNT(*) AS n FROM pedidos"})
-	if !strings.Contains(out, "[[3]]") {
-		t.Fatalf("dry run must not persist and the insert must: %s", out)
-	}
+	failIf(t, !strings.Contains(out, "[[3]]"), "dry run must not persist and the insert must: %s", out)
 
 	out, isErr = callTool(t, s, "sql_execute", map[string]any{"connection": "loja", "sql": "ATTACH DATABASE '" + f.st.Path + "' AS own"})
-	if !isErr || !strings.Contains(out, "ATTACH is not allowed") {
-		t.Fatalf("ATTACH must be refused: %s", out)
-	}
+	failIf(t, !isErr || !strings.Contains(out, "ATTACH is not allowed"), "ATTACH must be refused: %s", out)
 
 	out, isErr = callTool(t, s, "sql_query", map[string]any{"connection": "nada", "sql": "SELECT 1"})
-	if !isErr || !strings.Contains(out, "Available: loja (sqlite)") {
-		t.Fatalf("unknown connection: %s", out)
-	}
+	failIf(t, !isErr || !strings.Contains(out, "Available: loja (sqlite)"), "unknown connection: %s", out)
 
 	entries, err := f.st.ListAudit(context.Background(), store.AuditFilter{Limit: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	statuses := map[string]int{}
 	for _, e := range entries {
 		statuses[e.Status]++
 	}
-	if statuses[model.StatusOK] != 4 || statuses[model.StatusDenied] != 3 || statuses[model.StatusError] != 1 {
-		t.Fatalf("audit statuses = %v", statuses)
-	}
+	failIf(t, statuses[model.StatusOK] != 4 || statuses[model.StatusDenied] != 3 || statuses[model.StatusError] != 1, "audit statuses = %v", statuses)
 }
 
 func TestDescribeAndList(t *testing.T) {
@@ -197,25 +165,17 @@ func TestDescribeAndList(t *testing.T) {
 			Denied []string `json:"denied_operations"`
 		} `json:"connections"`
 	}
-	if isErr || json.Unmarshal([]byte(out), &listed) != nil || len(listed.Connections) != 1 {
-		t.Fatalf("list_connections: %s", out)
-	}
+	failIf(t, isErr || json.Unmarshal([]byte(out), &listed) != nil || len(listed.Connections) != 1, "list_connections: %s", out)
 	if c := listed.Connections[0]; !slices.Contains(c.Tools, "sql_execute") || !slices.Equal(c.Denied, []string{"update", "delete", "ddl"}) {
 		t.Fatalf("connection view: %+v", c)
 	}
 
 	out, isErr = callTool(t, s, "describe_schema", map[string]any{"connection": "loja"})
-	if isErr || !strings.Contains(out, "pedidos") {
-		t.Fatalf("describe tables: %s", out)
-	}
+	failIf(t, isErr || !strings.Contains(out, "pedidos"), "describe tables: %s", out)
 	out, isErr = callTool(t, s, "describe_schema", map[string]any{"connection": "loja", "object": "pedidos"})
-	if isErr || !strings.Contains(out, "cliente") {
-		t.Fatalf("describe columns: %s", out)
-	}
+	failIf(t, isErr || !strings.Contains(out, "cliente"), "describe columns: %s", out)
 	out, isErr = callTool(t, s, "describe_schema", map[string]any{"connection": "loja", "object": "nada"})
-	if !isErr || !strings.Contains(out, "not found") {
-		t.Fatalf("describe missing table: %s", out)
-	}
+	failIf(t, !isErr || !strings.Contains(out, "not found"), "describe missing table: %s", out)
 }
 
 func TestHandlerRequiresToken(t *testing.T) {
@@ -242,12 +202,8 @@ func TestHandlerRequiresToken(t *testing.T) {
 
 func TestLimitKeepsUTF8(t *testing.T) {
 	got := limit("ação", 2) // "a" + first byte of "ç"
-	if got != "a…" {
-		t.Fatalf("limit cut inside a character: %q", got)
-	}
-	if limit("abc", 5) != "abc" {
-		t.Fatal("short strings must be unchanged")
-	}
+	failIf(t, got != "a…", "limit cut inside a character: %q", got)
+	failIf(t, limit("abc", 5) != "abc", "short strings must be unchanged")
 }
 
 func TestSQLParams(t *testing.T) {
@@ -291,5 +247,13 @@ func TestMongoGuards(t *testing.T) {
 		if !isErr || !strings.Contains(out, tc.want) {
 			t.Errorf("%s %v: got %q, want error containing %q", tc.tool, tc.args, out, tc.want)
 		}
+	}
+}
+
+// failIf stops the test with the message when bad is true.
+func failIf(t *testing.T, bad bool, format string, args ...any) {
+	t.Helper()
+	if bad {
+		t.Fatalf(format, args...)
 	}
 }

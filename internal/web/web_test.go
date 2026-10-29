@@ -31,19 +31,13 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	dir := t.TempDir()
 	cipher, err := store.NewCipher(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	st, err := store.Open(filepath.Join(dir, "comporta.db"), cipher)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	t.Cleanup(func() { _ = st.Close() })
 	target := filepath.Join(dir, "loja.db")
 	tdb, err := sql.Open("sqlite", target)
-	if err != nil {
-		t.Fatal(err)
-	}
+	failIf(t, err != nil, "%v", err)
 	if _, err := tdb.ExecContext(context.Background(), "CREATE TABLE t (id INTEGER)"); err != nil {
 		t.Fatal(err)
 	}
@@ -87,21 +81,13 @@ func TestAuthAndHeaders(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/meta", nil)
 	rec := httptest.NewRecorder()
 	e.h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Header().Get("WWW-Authenticate"), "comporta") {
-		t.Fatalf("no credentials: %d %v", rec.Code, rec.Header())
-	}
+	failIf(t, rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Header().Get("WWW-Authenticate"), "comporta"), "no credentials: %d %v", rec.Code, rec.Header())
 
 	rec = e.do(t, http.MethodGet, "/", "")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Comporta</title>") {
-		t.Fatalf("index: %d", rec.Code)
-	}
+	failIf(t, rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Comporta</title>"), "index: %d", rec.Code)
 	csp := rec.Header().Get("Content-Security-Policy")
-	if strings.Contains(csp, "unsafe-inline") || !strings.Contains(csp, "script-src 'self'") {
-		t.Fatalf("CSP must not allow inline code: %q", csp)
-	}
-	if rec.Header().Get("Cache-Control") != "no-cache" {
-		t.Fatal("static files must be revalidated")
-	}
+	failIf(t, strings.Contains(csp, "unsafe-inline") || !strings.Contains(csp, "script-src 'self'"), "CSP must not allow inline code: %q", csp)
+	failIf(t, rec.Header().Get("Cache-Control") != "no-cache", "static files must be revalidated")
 	for _, f := range []string{"/app.js", "/app.css", "/favicon.svg"} {
 		if rec := e.do(t, http.MethodGet, f, ""); rec.Code != http.StatusOK {
 			t.Errorf("%s: %d", f, rec.Code)
@@ -109,9 +95,7 @@ func TestAuthAndHeaders(t *testing.T) {
 	}
 
 	meta := decodeBody[Meta](t, e.do(t, http.MethodGet, "/api/meta", ""))
-	if meta.MaxRowsCap != 500 || len(meta.DBTypes) != 5 {
-		t.Fatalf("meta: %+v", meta)
-	}
+	failIf(t, meta.MaxRowsCap != 500 || len(meta.DBTypes) != 5, "meta: %+v", meta)
 }
 
 func TestLoginLimiter(t *testing.T) {
@@ -139,13 +123,9 @@ func TestLoginLimiter(t *testing.T) {
 	for range maxFailures {
 		l.fail("h")
 	}
-	if l.blocked("h") <= 0 {
-		t.Fatal("host should be blocked")
-	}
+	failIf(t, l.blocked("h") <= 0, "host should be blocked")
 	now = now.Add(window + time.Second)
-	if l.blocked("h") != 0 || len(l.failures) != 0 {
-		t.Fatal("failures must expire after the window")
-	}
+	failIf(t, l.blocked("h") != 0 || len(l.failures) != 0, "failures must expire after the window")
 }
 
 func TestConnectionLifecycle(t *testing.T) {
@@ -154,13 +134,9 @@ func TestConnectionLifecycle(t *testing.T) {
 	// Postel: the name is normalized, not rejected.
 	body := `{"name":" Loja Local ","type":"sqlite","dsn":"` + e.target + `","enabled":true,"allow_insert":true}`
 	rec := e.do(t, http.MethodPost, "/api/connections", body)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
-	}
+	failIf(t, rec.Code != http.StatusCreated, "create: %d %s", rec.Code, rec.Body.String())
 	created := decodeBody[connView](t, rec)
-	if created.Name != "loja_local" || created.MaxRows != 100 || created.TimeoutSec != 30 {
-		t.Fatalf("created: %+v", created)
-	}
+	failIf(t, created.Name != "loja_local" || created.MaxRows != 100 || created.TimeoutSec != 30, "created: %+v", created)
 
 	errs := []struct{ body, field string }{
 		{`{"name":"1x","type":"sqlite","dsn":"a.db"}`, "name"},
@@ -185,27 +161,17 @@ func TestConnectionLifecycle(t *testing.T) {
 
 	id := "/api/connections/" + itoa(created.ID)
 	rec = e.do(t, http.MethodPut, id, `{"name":"loja_local","type":"sqlite","enabled":false,"allow_ddl":true,"description":"nova"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("update: %d %s", rec.Code, rec.Body.String())
-	}
+	failIf(t, rec.Code != http.StatusOK, "update: %d %s", rec.Code, rec.Body.String())
 	updated := decodeBody[connView](t, rec)
-	if updated.Enabled || !updated.AllowDDL || updated.AllowInsert || updated.Description != "nova" {
-		t.Fatalf("updated: %+v", updated)
-	}
+	failIf(t, updated.Enabled || !updated.AllowDDL || updated.AllowInsert || updated.Description != "nova", "updated: %+v", updated)
 
 	list := decodeBody[[]connView](t, e.do(t, http.MethodGet, "/api/connections", ""))
-	if len(list) != 1 || list[0].DSNMasked != e.target {
-		t.Fatalf("list: %+v", list)
-	}
+	failIf(t, len(list) != 1 || list[0].DSNMasked != e.target, "list: %+v", list)
 
 	test := decodeBody[map[string]any](t, e.do(t, http.MethodPost, "/api/test", `{"id":`+itoa(created.ID)+`,"type":"sqlite"}`))
-	if test["ok"] != true {
-		t.Fatalf("test saved connection: %v", test)
-	}
+	failIf(t, test["ok"] != true, "test saved connection: %v", test)
 	test = decodeBody[map[string]any](t, e.do(t, http.MethodPost, "/api/test", `{"type":"postgres","dsn":"::not a dsn"}`))
-	if test["ok"] != false {
-		t.Fatalf("test bad dsn: %v", test)
-	}
+	failIf(t, test["ok"] != false, "test bad dsn: %v", test)
 	if rec := e.do(t, http.MethodPost, "/api/test", `{"type":"oracle","dsn":"x"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("test bad type: %d", rec.Code)
 	}
@@ -219,15 +185,11 @@ func TestConnectionLifecycle(t *testing.T) {
 	if rec := e.do(t, http.MethodPut, id, body); rec.Code != http.StatusNotFound {
 		t.Fatalf("update missing: %d", rec.Code)
 	}
-	if e.changes != 3 {
-		t.Fatalf("onChange called %d times, want 3", e.changes)
-	}
+	failIf(t, e.changes != 3, "onChange called %d times, want 3", e.changes)
 
 	// Every admin change is in the audit log, with what changed.
 	entries := decodeBody[[]model.AuditEntry](t, e.do(t, http.MethodGet, "/api/audit?tool=admin", ""))
-	if len(entries) != 3 || entries[1].Operation != "connection.update" || !strings.Contains(entries[1].Statement, "allow_ddl: false → true") {
-		t.Fatalf("admin audit: %+v", entries)
-	}
+	failIf(t, len(entries) != 3 || entries[1].Operation != "connection.update" || !strings.Contains(entries[1].Statement, "allow_ddl: false → true"), "admin audit: %+v", entries)
 }
 
 func TestAuditEndpoints(t *testing.T) {
@@ -237,39 +199,29 @@ func TestAuditEndpoints(t *testing.T) {
 	for i, st := range []string{model.StatusOK, model.StatusDenied, model.StatusError, model.StatusOK} {
 		err := e.st.InsertAudit(ctx, model.AuditEntry{Time: now.Add(time.Duration(i) * time.Second), Client: "claude-code", Connection: "loja",
 			Tool: "sql_query", Operation: "select", Statement: "=SELECT " + st, Status: st})
-		if err != nil {
-			t.Fatal(err)
-		}
+		failIf(t, err != nil, "%v", err)
 	}
 	stats := decodeBody[struct {
 		store.AuditStats
 		Connections map[string]store.Activity `json:"connections"`
 	}](t, e.do(t, http.MethodGet, "/api/audit/stats", ""))
-	if stats.Total != 4 || stats.Denied != 1 || stats.Connections["loja"].Calls != 4 || stats.Connections["loja"].Errors != 1 {
-		t.Fatalf("stats: %+v", stats)
-	}
+	failIf(t, stats.Total != 4 || stats.Denied != 1 || stats.Connections["loja"].Calls != 4 || stats.Connections["loja"].Errors != 1, "stats: %+v", stats)
 
 	denied := decodeBody[[]model.AuditEntry](t, e.do(t, http.MethodGet, "/api/audit?status=denied&q=SELECT&connection=loja", ""))
-	if len(denied) != 1 {
-		t.Fatalf("filtered: %+v", denied)
-	}
+	failIf(t, len(denied) != 1, "filtered: %+v", denied)
 	since := now.Add(2500 * time.Millisecond).UTC().Format(time.RFC3339Nano)
 	if got := decodeBody[[]model.AuditEntry](t, e.do(t, http.MethodGet, "/api/audit?since="+since, "")); len(got) != 1 {
 		t.Fatalf("since: %+v", got)
 	}
 	page := decodeBody[[]model.AuditEntry](t, e.do(t, http.MethodGet, "/api/audit?limit=2", ""))
 	next := decodeBody[[]model.AuditEntry](t, e.do(t, http.MethodGet, "/api/audit?limit=2&before_id="+itoa(page[1].ID), ""))
-	if len(page) != 2 || len(next) != 2 || next[0].ID >= page[1].ID {
-		t.Fatalf("pagination: %v %v", page, next)
-	}
+	failIf(t, len(page) != 2 || len(next) != 2 || next[0].ID >= page[1].ID, "pagination: %v %v", page, next)
 
 	rec := e.do(t, http.MethodGet, "/api/audit/export", "")
 	if !strings.HasPrefix(rec.Header().Get("Content-Disposition"), `attachment; filename="comporta-audit-`) {
 		t.Fatalf("export headers: %v", rec.Header())
 	}
-	if !strings.Contains(rec.Body.String(), "'=SELECT ok") {
-		t.Fatalf("export must defuse formulas: %s", rec.Body.String())
-	}
+	failIf(t, !strings.Contains(rec.Body.String(), "'=SELECT ok"), "export must defuse formulas: %s", rec.Body.String())
 }
 
 func TestNormalizeName(t *testing.T) {
@@ -281,3 +233,11 @@ func TestNormalizeName(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// failIf stops the test with the message when bad is true.
+func failIf(t *testing.T, bad bool, format string, args ...any) {
+	t.Helper()
+	if bad {
+		t.Fatalf(format, args...)
+	}
+}
