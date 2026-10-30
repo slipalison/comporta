@@ -223,6 +223,19 @@ main.wrap { padding: var(--s6) var(--s5) var(--s7); outline: none; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------------------------------------------------------------- notice */
+.notice {
+  display: flex; gap: var(--s3); align-items: flex-start;
+  background: var(--warn-soft); border: 1px solid var(--border); border-left: 4px solid var(--warn);
+  border-radius: var(--r2); padding: var(--s4);
+}
+.notice-icon { color: var(--warn); width: 22px; height: 22px; margin-top: 2px; }
+.notice-body { flex: 1; display: grid; gap: var(--s1); max-width: 80ch; }
+.notice-body b { color: var(--text); }
+.notice-body code { white-space: nowrap; }
+.notice .btn { flex: none; }
+@media (max-width: 720px) { .notice { flex-wrap: wrap; } .notice .btn { width: 100%; } }
+
 /* ------------------------------------------------------------ onboarding */
 .onboard {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3);

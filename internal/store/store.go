@@ -22,44 +22,9 @@ type Store struct {
 	db     *sql.DB
 	cipher *Cipher
 	Path   string
+	// Migration is what Open did to the schema, for the startup log.
+	Migration Migration
 }
-
-const schema = `
-CREATE TABLE IF NOT EXISTS connections (
-	id           INTEGER PRIMARY KEY AUTOINCREMENT,
-	name         TEXT    NOT NULL UNIQUE,
-	type         TEXT    NOT NULL,
-	description  TEXT    NOT NULL DEFAULT '',
-	dsn_enc      TEXT    NOT NULL,
-	db_name      TEXT    NOT NULL DEFAULT '',
-	enabled      INTEGER NOT NULL DEFAULT 1,
-	allow_insert INTEGER NOT NULL DEFAULT 0,
-	allow_update INTEGER NOT NULL DEFAULT 0,
-	allow_delete INTEGER NOT NULL DEFAULT 0,
-	allow_ddl    INTEGER NOT NULL DEFAULT 0,
-	max_rows     INTEGER NOT NULL DEFAULT 100,
-	timeout_sec  INTEGER NOT NULL DEFAULT 30,
-	created_at   INTEGER NOT NULL,
-	updated_at   INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS audit_log (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	ts          INTEGER NOT NULL,
-	client      TEXT    NOT NULL DEFAULT '',
-	connection  TEXT    NOT NULL DEFAULT '',
-	db_type     TEXT    NOT NULL DEFAULT '',
-	tool        TEXT    NOT NULL,
-	operation   TEXT    NOT NULL DEFAULT '',
-	statement   TEXT    NOT NULL DEFAULT '',
-	params      TEXT    NOT NULL DEFAULT '',
-	status      TEXT    NOT NULL,
-	message     TEXT    NOT NULL DEFAULT '',
-	rows        INTEGER NOT NULL DEFAULT 0,
-	duration_ms INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
-CREATE INDEX IF NOT EXISTS idx_audit_conn_ts ON audit_log(connection, ts);
-`
 
 // DBPath is the store file inside dataDir. A data volume from the former
 // db-mcp keeps its file name, so upgrading does not lose connections or logs.
@@ -82,11 +47,12 @@ func Open(path string, c *Cipher) (*Store, error) {
 	// One connection serialises writes and avoids SQLITE_BUSY; the load is
 	// one row per tool call.
 	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(context.Background(), schema); err != nil {
+	m, err := migrate(context.Background(), db, path)
+	if err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("migrating %s: %w", path, err)
+		return nil, err
 	}
-	s := &Store{db: db, cipher: c, Path: path}
+	s := &Store{db: db, cipher: c, Path: path, Migration: m}
 	if err := s.reencrypt(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("re-encrypting connection strings: %w", err)

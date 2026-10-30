@@ -805,6 +805,32 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("hashchange", () => navigate(true));
 document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadStats(); });
 
+// ----------------------------------------------------------------- storage
+const STORAGE_NOTE_KEY = "comporta.storageNoteDismissed";
+
+// renderStorageNote warns when the data dies with the container. Dismissing
+// it is remembered for that data path only.
+function renderStorageNote() {
+  const st = state.meta.storage;
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem(STORAGE_NOTE_KEY) === st?.path;
+  } catch {
+    // storage blocked: show the note every time
+  }
+  $("#storage-note").hidden = !st || st.persistent || dismissed;
+}
+
+$("#storage-dismiss").addEventListener("click", () => {
+  try {
+    localStorage.setItem(STORAGE_NOTE_KEY, state.meta.storage?.path || "");
+  } catch {
+    // nothing to remember it in
+  }
+  $("#storage-note").hidden = true;
+  $("#new-conn").focus();
+});
+
 // ---------------------------------------------------------------- language
 // renderTexts redraws everything that holds text, in the current language.
 function renderTexts() {
@@ -837,6 +863,7 @@ async function boot() {
   $("#retention").textContent = t("audit.retention", { days: state.meta.retention_days });
   fillTypes();
   renderClients();
+  renderStorageNote();
   await loadStats();
   await loadConnections();
   navigate(false);

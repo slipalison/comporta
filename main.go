@@ -162,6 +162,14 @@ func run(ctx context.Context) error {
 	if err := os.MkdirAll(cfg.dataDir, 0o700); err != nil {
 		return err
 	}
+	if err := store.CheckWritable(cfg.dataDir); err != nil {
+		return err
+	}
+	storage := store.DetectStorage(cfg.dataDir)
+	if !storage.Persistent {
+		slog.Warn("data directory is not a volume: connections and the audit log are lost when this container is removed or recreated for a new image; "+
+			"mount one to keep them, e.g. -v comporta-data:/data", "path", storage.Path)
+	}
 	if cfg.secretKey == "" {
 		slog.Warn("COMPORTA_SECRET_KEY not set: using a generated key in the data directory; connection strings are only as safe as that volume")
 	}
@@ -178,6 +186,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	if m := st.Migration; m.From != m.To {
+		slog.Info("database schema migrated", "path", st.Path, "from", m.From, "to", m.To, "backup", m.Backup)
+	}
 
 	reg := db.NewRegistry(st.Path)
 	defer reg.Close()
@@ -193,7 +204,7 @@ func run(ctx context.Context) error {
 	}
 	sort.Strings(labels)
 	admin := web.New(st, reg, cfg.adminUser, cfg.adminPassword,
-		web.Meta{Version: version, RetentionDays: cfg.retentionDays, MaxRowsCap: cfg.maxRowsCap, Clients: labels},
+		web.Meta{Version: version, RetentionDays: cfg.retentionDays, MaxRowsCap: cfg.maxRowsCap, Clients: labels, Storage: storage},
 		func() {
 			if err := mcpServer.Refresh(context.Background()); err != nil {
 				slog.Error("refreshing mcp tools", "err", err)

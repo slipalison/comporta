@@ -4,6 +4,9 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,5 +116,23 @@ func TestRunRejectsBadConfig(t *testing.T) {
 	t.Setenv("DBMCP_ADMIN_PASSWORD", "")
 	if err := run(context.Background()); err == nil {
 		t.Fatal("run must refuse to start without an admin password")
+	}
+}
+
+func TestRunStopsOnUnwritableDataDir(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root writes anywhere")
+	}
+	ro := filepath.Join(t.TempDir(), "ro")
+	if err := os.Mkdir(ro, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o700) })
+	t.Setenv("COMPORTA_ADMIN_PASSWORD", "x")
+	t.Setenv("COMPORTA_MCP_TOKEN", "0123456789abcdef")
+	t.Setenv("COMPORTA_DATA_DIR", ro)
+	err := run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "chown") {
+		t.Fatalf("got %v, want the chown hint", err)
 	}
 }

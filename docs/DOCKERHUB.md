@@ -37,6 +37,8 @@ claude mcp add --transport http --scope user comporta http://127.0.0.1:7843/mcp 
   --header "Authorization: Bearer <the token after claude-code: in comporta.env>"
 ```
 
+`-v comporta-data:/data` is optional and recommended: without it, connections and the audit log live inside the container and are lost when you recreate it for a new image. With it, updating is `docker rm -f comporta` and the same `docker run` with the new tag; Comporta migrates the database file on start, after saving a backup next to it. Using a host folder instead? It must belong to user `65532` (`sudo chown -R 65532:65532 <folder>`).
+
 Database on the same machine? Use `host.docker.internal` in the connection string and add `--add-host host.docker.internal:host-gateway` to `docker run`.
 
 ## Tags

@@ -164,3 +164,34 @@ func failIf(t *testing.T, bad bool, format string, args ...any) {
 		t.Fatalf(format, args...)
 	}
 }
+
+func TestMountedAt(t *testing.T) {
+	info := `22 1 0:21 / / rw,relatime - overlay overlay rw
+23 22 0:22 / /proc rw - proc proc rw
+30 22 8:1 /var/lib/docker/volumes/comporta-data/_data /data rw,relatime - ext4 /dev/sda1 rw
+31 22 8:1 /home/me/my\040files /srv/my\040files rw - ext4 /dev/sda1 rw
+`
+	failIf(t, !mountedAt(strings.NewReader(info), "/data"), "/data is a mount")
+	failIf(t, !mountedAt(strings.NewReader(info), "/data/sub"), "a folder inside a mount is persistent")
+	failIf(t, !mountedAt(strings.NewReader(info), "/srv/my files"), "escaped spaces")
+	failIf(t, mountedAt(strings.NewReader(info), "/database"), "/database is not under /data")
+	failIf(t, mountedAt(strings.NewReader(info), "/app/data"), "only / covers it: not a volume")
+}
+
+func TestCheckWritable(t *testing.T) {
+	dir := t.TempDir()
+	failIf(t, CheckWritable(dir) != nil, "a temp dir is writable")
+	entries, _ := os.ReadDir(dir)
+	failIf(t, len(entries) != 0, "the probe file must be removed")
+	ro := filepath.Join(dir, "ro")
+	failIf(t, os.Mkdir(ro, 0o500) != nil, "mkdir")
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o700) })
+	if os.Getuid() == 0 {
+		t.Skip("root writes anywhere")
+	}
+	err := CheckWritable(ro)
+	failIf(t, err == nil || !strings.Contains(err.Error(), "chown -R 65532:65532"), "read-only dir: %v", err)
+	failIf(t, CheckWritable(filepath.Join(dir, "missing")) == nil, "a missing dir is an error")
+	st := DetectStorage(dir)
+	failIf(t, !st.Persistent || st.Path != dir, "outside a container the disk is persistent: %+v", st)
+}
