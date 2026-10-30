@@ -17,6 +17,11 @@ const en = {
   "pulse.denied": { one: "denied", other: "denied" },
   "pulse.errors": { one: "error", other: "errors" },
 
+  "storage.title": "Your data is not on a volume",
+  "storage.body": "Connections and the audit log are kept inside this container. They survive a restart, but are lost when the container is removed or recreated for a new image. Start it with <code>-v comporta-data:/data</code> to keep them.",
+  "storage.link": "How to keep your data",
+  "storage.href": "https://github.com/slipalison/comporta#keeping-your-data",
+  "storage.dismiss": "Got it",
   "conn.title": "Connections",
   "conn.lede": "Each connection is a database the AI can see. Read queries are always allowed; writing needs the permission turned on here.",
   "conn.new": "New connection",
@@ -228,6 +233,11 @@ const pt = {
   "pulse.denied": { one: "negada", other: "negadas" },
   "pulse.errors": { one: "erro", other: "erros" },
 
+  "storage.title": "Seus dados não estão num volume",
+  "storage.body": "As conexões e a auditoria ficam dentro deste container. Elas sobrevivem a um restart, mas se perdem quando o container é removido ou recriado para uma imagem nova. Suba com <code>-v comporta-data:/data</code> para guardá-las.",
+  "storage.link": "Como guardar os seus dados",
+  "storage.href": "https://github.com/slipalison/comporta/blob/main/README.pt-BR.md#guardar-os-seus-dados",
+  "storage.dismiss": "Entendi",
   "conn.title": "Conexões",
   "conn.lede": "Cada conexão é um banco que a IA enxerga. Consultas de leitura estão sempre liberadas; escrever exige a permissão ligada aqui.",
   "conn.new": "Nova conexão",

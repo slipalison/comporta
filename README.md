@@ -30,6 +30,8 @@ docker run -d --name comporta --restart unless-stopped \
   slipalison/comporta:latest
 ```
 
+The `-v comporta-data:/data` line is optional, and recommended: it keeps your connections and audit log when you update the image. See [Keeping your data](#keeping-your-data).
+
 **3. Open <http://127.0.0.1:7843>**, sign in as `admin` with the password from step 1, and add your first connection. Then connect your AI client:
 
 ```bash
@@ -42,6 +44,34 @@ That's it. Ask your assistant something like *"list the tables in my database"*,
 > **Database on the same machine?** Inside Docker, `localhost` is the container itself. Use `host.docker.internal` in the connection string and add `--add-host host.docker.internal:host-gateway` to `docker run`.
 
 The same image is also on GitHub: `ghcr.io/slipalison/comporta`. Every version is published to both registries with the same digest. Pin a version (`slipalison/comporta:0.1.0`) instead of `latest` in production.
+
+### Keeping your data
+
+Comporta stores its connections, encrypted connection strings and audit log in one SQLite file under `/data`. A volume is **optional**:
+
+| How you run it | Restart (`docker restart`) | New image (remove and run again) |
+|---|---|---|
+| no volume | data kept | **data lost** |
+| named volume: `-v comporta-data:/data` | data kept | data kept |
+| host folder: `-v /srv/comporta:/data` | data kept | data kept |
+
+Without a volume, Comporta works normally and says so: a warning in the log and a notice at the top of the admin UI.
+
+**Updating the image** with a volume is just removing the old container and starting the new image with the same `-v`. On start, Comporta checks the version of the database file and, if the new image needs a newer layout, it first saves a copy next to it (`comporta.db.v<old version>.bak`) and then migrates it. The log shows it:
+
+```
+"msg":"database schema migrated","from":0,"to":2,"backup":"/data/comporta.db.v0.bak"
+```
+
+**Going back** to an older image after a migration is refused: the older image would not know the new layout. Start the newer image again, or restore the `.bak` file in place of `comporta.db`.
+
+**A host folder** must be writable by the container's user (`65532`). If it is not, Comporta stops with the fix in the log:
+
+```bash
+sudo mkdir -p /srv/comporta && sudo chown -R 65532:65532 /srv/comporta
+```
+
+Named volumes need nothing: Docker gives them the right owner.
 
 ### With Docker Compose
 

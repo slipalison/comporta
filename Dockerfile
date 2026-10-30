@@ -27,7 +27,11 @@ LABEL org.opencontainers.image.title="comporta" \
 COPY --from=build /out/comporta /comporta
 COPY --from=build --chown=65532:65532 /out/data /data
 ENV COMPORTA_ADDR=:8080 COMPORTA_DATA_DIR=/data
-VOLUME /data
+# No VOLUME instruction on purpose: it would give every container a fresh
+# anonymous volume, which looks persistent but is left behind (empty for the
+# next container) on every image update. Mount /data to keep the data
+# (-v comporta-data:/data); without a mount it lives in the container and
+# survives restarts only. The server tells which one it got at startup.
 EXPOSE 8080
 USER 65532:65532
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD ["/comporta", "healthcheck"]

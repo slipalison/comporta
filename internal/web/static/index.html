@@ -73,6 +73,16 @@
       </button>
     </div>
 
+    <aside class="notice" id="storage-note" hidden data-i18n-attr="aria-label:storage.title">
+      <svg class="icon notice-icon" aria-hidden="true"><use href="#i-alert"/></svg>
+      <div class="notice-body">
+        <p><b data-i18n="storage.title">Your data is not on a volume</b></p>
+        <p data-i18n-html="storage.body"></p>
+        <p><a href="https://github.com/slipalison/comporta#keeping-your-data" target="_blank" rel="noopener" data-i18n="storage.link" data-i18n-attr="href:storage.href">How to keep your data</a></p>
+      </div>
+      <button type="button" class="btn btn-sm" id="storage-dismiss" data-i18n="storage.dismiss">Got it</button>
+    </aside>
+
     <output id="conn-loading" class="loading">
       <span class="spinner" aria-hidden="true"></span> <span data-i18n="conn.loading">Loading connections…</span>
     </output>

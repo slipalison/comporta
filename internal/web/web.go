@@ -33,6 +33,7 @@ type Meta struct {
 	MaxRowsCap    int                               `json:"max_rows_cap"`
 	Clients       []string                          `json:"mcp_clients"`
 	DBTypes       map[model.DBType]model.DBTypeInfo `json:"db_types"`
+	Storage       store.Storage                     `json:"storage"`
 }
 
 type Server struct {

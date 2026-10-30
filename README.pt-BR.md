@@ -30,6 +30,8 @@ docker run -d --name comporta --restart unless-stopped \
   slipalison/comporta:latest
 ```
 
+A linha `-v comporta-data:/data` é opcional, e recomendada: ela guarda as conexões e a auditoria quando você atualiza a imagem. Veja [Guardar os seus dados](#guardar-os-seus-dados).
+
 **3. Abra <http://127.0.0.1:7843>**, entre como `admin` com a senha do passo 1 e cadastre a primeira conexão. Depois, conecte o seu cliente de IA:
 
 ```bash
@@ -42,6 +44,34 @@ Pronto. Peça ao assistente algo como *"liste as tabelas do meu banco"* e veja a
 > **Banco na mesma máquina?** Dentro do Docker, `localhost` é o próprio container. Use `host.docker.internal` na connection string e acrescente `--add-host host.docker.internal:host-gateway` ao `docker run`.
 
 A mesma imagem também está no GitHub: `ghcr.io/slipalison/comporta`. Cada versão sai nos dois registros com o mesmo digest. Em produção, fixe uma versão (`slipalison/comporta:0.1.0`) em vez de `latest`.
+
+### Guardar os seus dados
+
+O Comporta guarda as conexões, as connection strings cifradas e a auditoria num arquivo SQLite em `/data`. O volume é **opcional**:
+
+| Como você roda | Reinício (`docker restart`) | Imagem nova (remove e roda de novo) |
+|---|---|---|
+| sem volume | dados mantidos | **dados perdidos** |
+| volume nomeado: `-v comporta-data:/data` | dados mantidos | dados mantidos |
+| pasta do host: `-v /srv/comporta:/data` | dados mantidos | dados mantidos |
+
+Sem volume, o Comporta funciona normalmente e avisa: um aviso no log e outro no topo da interface.
+
+**Atualizar a imagem** com volume é só remover o container antigo e subir a imagem nova com o mesmo `-v`. Na partida, o Comporta confere a versão do arquivo e, se a imagem nova precisar de um formato mais novo, primeiro grava uma cópia ao lado (`comporta.db.v<versão antiga>.bak`) e depois migra. O log mostra:
+
+```
+"msg":"database schema migrated","from":0,"to":2,"backup":"/data/comporta.db.v0.bak"
+```
+
+**Voltar** para uma imagem mais antiga depois de uma migração é recusado: a imagem antiga não conhece o formato novo. Suba de novo a imagem mais nova, ou restaure o arquivo `.bak` no lugar do `comporta.db`.
+
+**Uma pasta do host** precisa aceitar escrita do usuário do container (`65532`). Se não aceitar, o Comporta para e mostra a solução no log:
+
+```bash
+sudo mkdir -p /srv/comporta && sudo chown -R 65532:65532 /srv/comporta
+```
+
+Volume nomeado não precisa de nada: o Docker já dá o dono certo.
 
 ### Com Docker Compose
 
