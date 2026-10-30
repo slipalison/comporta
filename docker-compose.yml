@@ -1,22 +1,28 @@
 services:
-  dbmcp:
+  comporta:
     build:
       context: .
       args:
-        VERSION: ${DBMCP_VERSION:-dev}
-    image: dbmcp:latest
-    container_name: dbmcp
+        VERSION: ${COMPORTA_VERSION:-dev}
+    # Para usar a imagem publicada: image: ghcr.io/slipalison/comporta:<versão>
+    image: comporta:dev
+    container_name: comporta
     restart: unless-stopped
     env_file: .env
     ports:
-      # Only on localhost: the admin UI decides what the LLM may do.
-      - "127.0.0.1:${DBMCP_PORT:-7843}:8080"
+      # Só em localhost: a UI decide o que a IA pode fazer.
+      - "127.0.0.1:${COMPORTA_PORT:-7843}:8080"
     volumes:
-      - dbmcp-data:/data
+      - comporta-data:/data
     extra_hosts:
-      # lets connections reach databases running on the host
+      # permite alcançar bancos que rodam no host
       - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     mem_limit: 256m
 
 volumes:
-  dbmcp-data:
+  comporta-data:

@@ -1,5 +1,9 @@
 .git
+.github
 .env
 data
 *.md
 docker-compose*.yml
+**/*_test.go
+.golangci.yml
+docs

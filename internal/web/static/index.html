@@ -3,488 +3,364 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DB MCP Gateway</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='5' rx='8' ry='3' fill='%232f6fed'/%3E%3Cpath d='M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5' fill='none' stroke='%232f6fed' stroke-width='2'/%3E%3Cpath d='M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3' fill='none' stroke='%232f6fed' stroke-width='2'/%3E%3C/svg%3E">
-<style>
-:root {
-  --bg: #f6f7f9; --panel: #ffffff; --text: #171a1f; --muted: #5f6775; --border: #e2e5ea;
-  --accent: #2f6fed; --accent-weak: #e9f0fe; --accent-text: #ffffff;
-  --ok: #17784a; --ok-bg: #e2f4ea; --warn: #9a5800; --warn-bg: #fdf0d9;
-  --err: #bf3329; --err-bg: #fde6e4; --code-bg: #f1f3f5; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101216; --panel: #171a1f; --text: #e6e8ec; --muted: #98a1b0; --border: #2a2f37;
-    --accent: #6d9bff; --accent-weak: #1c2742; --accent-text: #0b1020;
-    --ok: #4cc38a; --ok-bg: #14301f; --warn: #f0b357; --warn-bg: #33260e;
-    --err: #ff7b72; --err-bg: #3a1613; --code-bg: #1e2228; --shadow: none;
-  }
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { background: var(--panel); border-bottom: 1px solid var(--border); }
-.wrap { max-width: 1280px; margin: 0 auto; padding: 0 20px; }
-.top { display: flex; align-items: center; gap: 16px; height: 60px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 16px; }
-.brand small { color: var(--muted); font-weight: 400; font-size: 12px; }
-.stats { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-.stat { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
-.stat b { color: var(--text); font-variant-numeric: tabular-nums; }
-.stat.denied b { color: var(--warn); } .stat.error b { color: var(--err); }
-nav { display: flex; gap: 4px; }
-nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; color: var(--muted); font: inherit; font-weight: 550; cursor: pointer; }
-nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
-main { padding: 20px 0 60px; }
-.bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-.bar h2 { margin: 0; font-size: 18px; margin-right: auto; }
-.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); overflow: auto; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; background: var(--panel); position: sticky; top: 0; }
-tr:last-child td { border-bottom: 0; }
-td.center, th.center { text-align: center; }
-.mono { font-family: var(--mono); font-size: 12.5px; }
-.muted { color: var(--muted); }
-.small { font-size: 12px; }
-.name { font-family: var(--mono); font-weight: 600; }
-.desc { color: var(--muted); font-size: 12.5px; max-width: 320px; }
-.dsn { font-family: var(--mono); font-size: 11.5px; color: var(--muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--accent-weak); color: var(--accent); white-space: nowrap; }
-.badge.ok { background: var(--ok-bg); color: var(--ok); }
-.badge.denied { background: var(--warn-bg); color: var(--warn); }
-.badge.error { background: var(--err-bg); color: var(--err); }
-.badge.admin { background: var(--code-bg); color: var(--muted); }
-button.btn, a.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 8px; padding: 7px 12px; font: inherit; font-weight: 550; cursor: pointer; text-decoration: none; white-space: nowrap; }
-button.btn:hover, a.btn:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-button.danger:hover { border-color: var(--err); color: var(--err); }
-button.sm { padding: 4px 9px; font-size: 12px; }
-button:disabled { opacity: .55; cursor: default; }
-.actions { display: flex; gap: 6px; justify-content: flex-end; }
-.sw { position: relative; display: inline-block; width: 34px; height: 20px; vertical-align: middle; }
-.sw input { opacity: 0; width: 0; height: 0; position: absolute; }
-.sw span { position: absolute; inset: 0; border-radius: 999px; background: var(--border); transition: .15s; cursor: pointer; }
-.sw span::after { content: ""; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
-.sw input:checked + span { background: var(--accent); }
-.sw input.risky:checked + span { background: var(--err); }
-.sw input:checked + span::after { transform: translateX(14px); }
-.sw input:disabled + span { opacity: .5; cursor: default; }
-.sw input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-input[type=text], input[type=password], input[type=number], input[type=datetime-local], select, textarea {
-  width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit;
-}
-textarea { resize: vertical; min-height: 60px; }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-weak); border-color: var(--accent); }
-.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; align-items: end; }
-.filters label, .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
-.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-dialog { border: 1px solid var(--border); border-radius: 12px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--panel); color: var(--text); box-shadow: 0 20px 50px rgba(0,0,0,.25); }
-dialog::backdrop { background: rgba(10,12,16,.45); }
-.dlg-head { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 650; font-size: 16px; }
-.dlg-body { padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-height: 70vh; overflow: auto; }
-.dlg-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
-.full { grid-column: 1 / -1; }
-.hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
-.perms { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.perm { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-.perm b { font-size: 12px; font-family: var(--mono); }
-.perm small { color: var(--muted); font-size: 11px; line-height: 1.3; }
-.pw { display: flex; gap: 6px; }
-.test-result { font-size: 12.5px; margin-right: auto; }
-.test-result.ok { color: var(--ok); } .test-result.err { color: var(--err); }
-.empty { padding: 48px 20px; text-align: center; color: var(--muted); }
-.stmt { font-family: var(--mono); font-size: 12px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-tr.entry { cursor: pointer; }
-tr.entry:hover td { background: var(--code-bg); }
-tr.detail td { background: var(--code-bg); }
-pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12px; }
-.kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; }
-.kv dt { color: var(--muted); font-size: 12px; font-weight: 600; }
-.kv dd { margin: 0; }
-.more { display: flex; justify-content: center; padding: 14px; }
-.code { position: relative; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin: 8px 0 18px; }
-.code button { position: absolute; top: 8px; right: 8px; }
-.guide { max-width: 860px; }
-.guide h3 { margin: 22px 0 6px; font-size: 15px; }
-.guide p { margin: 6px 0; color: var(--muted); }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100vw - 32px); }
-.toast.show { opacity: 1; }
-.toast.err { background: var(--err); color: #fff; }
-[hidden] { display: none !important; }
-@media (max-width: 760px) {
-  .wrap { padding: 0 16px; }
-  .top { height: auto; padding: 12px 0; flex-wrap: wrap; }
-  .stats { margin-left: 0; }
-  .dlg-body { grid-template-columns: 1fr; }
-  .perms { grid-template-columns: repeat(2, 1fr); }
-}
-</style>
+<meta name="color-scheme" content="light dark">
+<title>Comporta</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="app.js"></script>
 </head>
 <body>
-<header>
-  <div class="wrap top">
-    <div class="brand">
-      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" fill="var(--accent)"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" fill="none" stroke="var(--accent)" stroke-width="2"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>
-      DB MCP Gateway <small id="version"></small>
-    </div>
-    <div class="stats" id="stats" title="Chamadas MCP nas últimas 24h"></div>
-  </div>
-  <div class="wrap">
-    <nav role="tablist">
-      <button role="tab" data-tab="connections" aria-selected="true">Conexões</button>
-      <button role="tab" data-tab="audit" aria-selected="false">Auditoria</button>
-      <button role="tab" data-tab="clients" aria-selected="false">Conectar clientes</button>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.2 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4.5M12 17h.01"/></symbol>
+  <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/></symbol>
+  <symbol id="i-deny" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0V7ZM12 17v5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+  <symbol id="i-gate" viewBox="0 0 32 32"><path d="M8 7v18M24 7v18" stroke-width="3"/><path d="M8 12h16M8 17h16" stroke-width="2.5"/><path d="M8 22c2.7-1.6 5.3 1.6 8 0s5.3-1.6 8 0" stroke-width="2"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <a class="brand" href="#/conexoes">
+      <span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-gate"/></svg></span>
+      <span class="brand-name">Comporta</span>
+      <span class="brand-version" id="version"></span>
+    </a>
+    <nav class="mainnav" aria-label="Principal">
+      <a href="#/conexoes" data-route="conexoes">Conexões</a>
+      <a href="#/auditoria" data-route="auditoria">Auditoria</a>
+      <a href="#/clientes" data-route="clientes">Conectar clientes</a>
     </nav>
+    <div class="pulse" id="pulse" hidden>
+      <span class="pulse-label"><span class="sr-only">Chamadas MCP nas últimas </span>24 h</span>
+      <a class="pulse-item" id="pulse-total" href="#/auditoria"><b>0</b> chamadas</a>
+      <a class="pulse-item is-denied" id="pulse-denied" href="#/auditoria?status=denied"><b>0</b> negadas</a>
+      <a class="pulse-item is-error" id="pulse-error" href="#/auditoria?status=error"><b>0</b> erros</a>
+    </div>
   </div>
 </header>
 
-<main class="wrap">
-  <section id="tab-connections">
-    <div class="bar">
-      <h2>Conexões</h2>
-      <button class="btn primary" id="new-conn">+ Nova conexão</button>
+<main id="main" class="wrap" tabindex="-1">
+
+  <!-- ===================================================== Conexões -->
+  <section id="view-conexoes" class="view" aria-labelledby="h-conexoes">
+    <div class="page-head">
+      <div>
+        <h1 id="h-conexoes" tabindex="-1">Conexões</h1>
+        <p class="lede">Cada conexão é um banco que a IA enxerga. Consultas de leitura estão sempre liberadas; escrever exige a permissão ligada aqui.</p>
+      </div>
+      <button type="button" class="btn btn-primary" id="new-conn" aria-keyshortcuts="n">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Nova conexão
+      </button>
     </div>
-    <div class="panel">
-      <table>
-        <thead><tr>
-          <th>Conexão</th><th>Tipo</th><th>Connection string</th>
-          <th class="center">Ativa</th><th class="center">Insert</th><th class="center">Update</th><th class="center">Delete</th><th class="center" title="CREATE, ALTER, DROP, EXEC, GRANT, SET...">DDL/Admin</th>
-          <th></th>
-        </tr></thead>
-        <tbody id="conn-rows"></tbody>
-      </table>
-      <div class="empty" id="conn-empty" hidden>Nenhuma conexão cadastrada. Clique em <b>+ Nova conexão</b> para começar.</div>
+
+    <output id="conn-loading" class="loading">
+      <span class="spinner" aria-hidden="true"></span> Carregando conexões…
+    </output>
+
+    <div id="conn-empty" class="onboard" hidden>
+      <h2>Comece por aqui</h2>
+      <ol class="steps">
+        <li><b>Cadastre uma conexão.</b> Informe a connection string e o que a IA pode fazer nela. Por padrão, só leitura.</li>
+        <li><b>Conecte o cliente MCP.</b> Claude Code, VS Code, Copilot ou Gemini, com o token de cada um. <a href="#/clientes">Ver instruções</a></li>
+        <li><b>Acompanhe na auditoria.</b> Toda chamada fica registrada: quem, onde, o quê e o resultado.</li>
+      </ol>
+      <button type="button" class="btn btn-primary" data-act="new">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Cadastrar a primeira conexão
+      </button>
     </div>
-    <p class="hint">SELECT está sempre liberado. As permissões valem na hora para as LLMs conectadas; toda alteração fica registrada na auditoria.</p>
+
+    <ul id="conn-list" class="conn-list" aria-label="Conexões cadastradas"></ul>
   </section>
 
-  <section id="tab-audit" hidden>
-    <div class="bar">
-      <h2>Auditoria</h2>
-      <label class="check"><input type="checkbox" id="auto-refresh" checked> Atualizar a cada 5s</label>
-      <a class="btn" id="export" href="#">Exportar CSV</a>
+  <!-- ===================================================== Auditoria -->
+  <section id="view-auditoria" class="view" aria-labelledby="h-auditoria" hidden>
+    <div class="page-head">
+      <div>
+        <h1 id="h-auditoria" tabindex="-1">Auditoria</h1>
+        <p class="lede">Toda chamada das IAs e toda mudança feita nesta tela. Clique numa linha para ver o comando completo.</p>
+      </div>
+      <div class="head-actions">
+        <label class="switch-label">
+          <input type="checkbox" class="switch" id="live" checked>
+          <span>Atualizar sozinho</span>
+        </label>
+        <a class="btn" id="export" href="api/audit/export" download>
+          <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Exportar CSV
+        </a>
+      </div>
     </div>
-    <div class="filters">
-      <div><label for="f-conn">Conexão</label><select id="f-conn"><option value="">Todas</option></select></div>
-      <div><label for="f-status">Status</label><select id="f-status">
-        <option value="">Todos</option><option value="ok">OK</option><option value="denied">Negado</option><option value="error">Erro</option></select></div>
-      <div><label for="f-tool">Ferramenta</label><select id="f-tool">
-        <option value="">Todas</option><option>sql_query</option><option>sql_execute</option><option>describe_schema</option>
-        <option>mongo_find</option><option>mongo_aggregate</option><option>mongo_count</option><option>mongo_insert</option>
-        <option>mongo_update</option><option>mongo_delete</option><option value="admin">admin (UI)</option></select></div>
-      <div><label for="f-op">Operação</label><select id="f-op">
-        <option value="">Todas</option><option>select</option><option>insert</option><option>update</option><option>delete</option><option>ddl</option><option>connection.</option></select></div>
-      <div><label for="f-since">Desde</label><input type="datetime-local" id="f-since"></div>
-      <div><label for="f-q">Buscar no texto</label><input type="text" id="f-q" placeholder="tabela, coleção, erro..."></div>
-    </div>
-    <div class="panel">
-      <table>
-        <thead><tr><th>Quando</th><th>Cliente</th><th>Conexão</th><th>Ferramenta</th><th>Operação</th><th>Status</th><th class="center">Linhas</th><th class="center">ms</th><th>Statement</th></tr></thead>
+
+    <form class="filters" id="filters" role="search" aria-label="Filtrar auditoria">
+      <div class="field field-search">
+        <label for="f-q">Buscar no comando, parâmetros ou mensagem</label>
+        <div class="input-icon">
+          <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <input type="search" id="f-q" name="q" placeholder="ex.: pedidos, DROP, timeout" aria-keyshortcuts="/" autocomplete="off">
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-status">Resultado</label>
+        <select id="f-status" name="status">
+          <option value="">Todos</option><option value="ok">OK</option><option value="denied">Negado</option><option value="error">Erro</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-connection">Conexão</label>
+        <select id="f-connection" name="connection"><option value="">Todas</option></select>
+      </div>
+      <div class="field">
+        <label for="f-tool">Ferramenta</label>
+        <select id="f-tool" name="tool">
+          <option value="">Todas</option>
+          <optgroup label="SQL"><option>sql_query</option><option>sql_execute</option></optgroup>
+          <optgroup label="MongoDB"><option>mongo_find</option><option>mongo_aggregate</option><option>mongo_count</option><option>mongo_insert</option><option>mongo_update</option><option>mongo_delete</option></optgroup>
+          <optgroup label="Outras"><option>describe_schema</option><option value="admin">Mudanças nesta tela</option></optgroup>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-operation">Operação</label>
+        <select id="f-operation" name="operation">
+          <option value="">Todas</option><option value="select">select</option><option value="insert">insert</option><option value="update">update</option><option value="delete">delete</option><option value="ddl">ddl</option><option value="connection.">mudança de conexão</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-since">Desde</label>
+        <input type="datetime-local" id="f-since" name="since">
+      </div>
+      <div class="field field-reset">
+        <button type="reset" class="btn btn-ghost" id="f-reset" hidden>Limpar filtros</button>
+      </div>
+    </form>
+
+    <output class="audit-summary" id="audit-summary"></output>
+
+    <div class="table-wrap">
+      <table class="audit" id="audit">
+        <caption class="sr-only">Registros de auditoria, do mais recente para o mais antigo</caption>
+        <thead>
+          <tr>
+            <th scope="col">Quando</th>
+            <th scope="col">Resultado</th>
+            <th scope="col">Conexão</th>
+            <th scope="col">Ferramenta</th>
+            <th scope="col">Comando</th>
+            <th scope="col" class="num">Linhas</th>
+            <th scope="col" class="num">Duração</th>
+            <th scope="col">Cliente</th>
+          </tr>
+        </thead>
         <tbody id="audit-rows"></tbody>
       </table>
-      <div class="empty" id="audit-empty" hidden>Nenhum registro para os filtros atuais.</div>
-      <div class="more" id="audit-more" hidden><button class="btn sm" id="load-more">Carregar mais</button></div>
+    </div>
+    <div class="empty-state" id="audit-empty" hidden>
+      <p><b>Nenhum registro com esses filtros.</b></p>
+      <p class="muted">Tente outro período ou limpe os filtros.</p>
+    </div>
+    <div class="more" id="audit-more" hidden>
+      <button type="button" class="btn" id="load-more">Carregar mais 100</button>
     </div>
     <p class="hint" id="retention"></p>
   </section>
 
-  <section id="tab-clients" hidden>
-    <div class="guide">
-      <div class="bar"><h2>Conectar clientes MCP</h2></div>
-      <p>Endpoint (Streamable HTTP): <b class="mono" id="endpoint"></b>. Cada cliente usa um token definido em <span class="mono">DBMCP_MCP_TOKENS</span>; o rótulo do token aparece na coluna <i>Cliente</i> da auditoria.</p>
-      <p id="client-labels"></p>
-      <h3>Claude Code</h3>
-      <div class="code"><button class="btn sm copy">Copiar</button><pre id="snip-claude"></pre></div>
-      <h3>VS Code / GitHub Copilot (mcp.json)</h3>
-      <div class="code"><button class="btn sm copy">Copiar</button><pre id="snip-vscode"></pre></div>
-      <h3>Copilot CLI, Gemini CLI e outros (mcpServers)</h3>
-      <div class="code"><button class="btn sm copy">Copiar</button><pre id="snip-generic"></pre></div>
-      <h3>O que a LLM enxerga</h3>
-      <p>As ferramentas são montadas a partir das conexões ativas: <span class="mono">sql_query</span> só lista conexões SQL, <span class="mono">sql_execute</span> só aparece para conexões com alguma escrita liberada, e as ferramentas <span class="mono">mongo_*</span> só listam conexões MongoDB. Cada conexão vai com tipo, dialeto, estilo de parâmetro e descrição — capriche na descrição para a LLM escolher a conexão certa. Clientes que guardam a lista de ferramentas em cache podem precisar reconectar após mudanças; as permissões, porém, são checadas a cada chamada.</p>
+  <!-- ===================================================== Clientes -->
+  <section id="view-clientes" class="view" aria-labelledby="h-clientes" hidden>
+    <div class="page-head">
+      <div>
+        <h1 id="h-clientes" tabindex="-1">Conectar clientes MCP</h1>
+        <p class="lede">Cada cliente usa um token próprio, definido em <code>COMPORTA_MCP_TOKENS</code>. O rótulo do token identifica o cliente na auditoria.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Endereço do servidor</h2>
+      <div class="copy-line">
+        <code id="endpoint"></code>
+        <button type="button" class="btn btn-sm" data-copy="#endpoint" aria-label="Copiar endereço do servidor">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        </button>
+      </div>
+      <p class="hint">Transporte Streamable HTTP, com o cabeçalho <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <div id="client-labels" class="token-labels"></div>
+    </div>
+
+    <div class="snippets">
+      <div class="card">
+        <h2 class="card-title">Claude Code</h2>
+        <pre class="code" id="snip-claude"></pre>
+        <button type="button" class="btn btn-sm" data-copy="#snip-claude" aria-label="Copiar comando do Claude Code">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        </button>
+      </div>
+      <div class="card">
+        <h2 class="card-title">VS Code e GitHub Copilot <span class="muted">(mcp.json)</span></h2>
+        <pre class="code" id="snip-vscode"></pre>
+        <button type="button" class="btn btn-sm" data-copy="#snip-vscode" aria-label="Copiar configuração do VS Code">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        </button>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Copilot CLI, Gemini CLI e outros <span class="muted">(mcpServers)</span></h2>
+        <pre class="code" id="snip-generic"></pre>
+        <button type="button" class="btn btn-sm" data-copy="#snip-generic" aria-label="Copiar configuração genérica">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        </button>
+      </div>
+    </div>
+
+    <div class="card prose">
+      <h2 class="card-title">O que a IA enxerga</h2>
+      <p>As ferramentas são montadas a partir das conexões ativas. <code>sql_query</code> lista só conexões SQL; <code>sql_execute</code> só aparece quando alguma conexão SQL tem escrita liberada; as ferramentas <code>mongo_*</code> listam só conexões MongoDB.</p>
+      <p>Cada conexão vai com o tipo, o dialeto, o estilo de parâmetro e a <b>descrição</b>. É a descrição que faz a IA escolher a conexão certa: diga o que há naquele banco.</p>
+      <p>Clientes que guardam a lista de ferramentas podem precisar reconectar depois de uma mudança aqui. As permissões, porém, são conferidas a cada chamada.</p>
     </div>
   </section>
 </main>
 
-<dialog id="dlg">
-  <form id="conn-form" method="dialog">
-    <div class="dlg-head" id="dlg-title">Nova conexão</div>
-    <div class="dlg-body">
-      <div class="field"><label for="c-name">Nome (usado pela LLM)</label>
-        <input type="text" id="c-name" required pattern="[a-z][a-z0-9_]{1,62}" placeholder="pagamentos_prod" autocomplete="off">
-        <div class="hint">minúsculas, números e _</div></div>
-      <div class="field"><label for="c-type">Tipo de banco</label><select id="c-type"></select></div>
-      <div class="field full"><label for="c-desc">Descrição para a LLM</label>
-        <textarea id="c-desc" placeholder="Ex.: Banco de pagamentos de produção. Tabelas de transações, estornos e conciliação."></textarea></div>
-      <div class="field full"><label for="c-dsn">Connection string</label>
-        <div class="pw"><input type="password" id="c-dsn" autocomplete="off" spellcheck="false"><button type="button" class="btn sm" id="toggle-dsn">Mostrar</button></div>
-        <div class="hint" id="dsn-hint"></div></div>
-      <div class="field" id="db-field"><label for="c-db">Database padrão (MongoDB)</label><input type="text" id="c-db" placeholder="opcional se já estiver na URI"></div>
-      <div class="field"><label for="c-rows">Máx. linhas por consulta</label><input type="number" id="c-rows" min="1" value="100"></div>
-      <div class="field"><label for="c-timeout">Timeout (segundos)</label><input type="number" id="c-timeout" min="1" max="600" value="30"></div>
-      <div class="field full"><label>Permissões da LLM</label>
-        <div class="perms">
-          <div class="perm"><b>SELECT</b><label class="sw"><input type="checkbox" checked disabled><span></span></label><small>sempre ativo</small></div>
-          <div class="perm"><b>INSERT</b><label class="sw"><input type="checkbox" id="c-insert"><span></span></label><small>inserir</small></div>
-          <div class="perm"><b>UPDATE</b><label class="sw"><input type="checkbox" id="c-update"><span></span></label><small>alterar</small></div>
-          <div class="perm"><b>DELETE</b><label class="sw"><input type="checkbox" id="c-delete" class="risky"><span></span></label><small>apagar</small></div>
-          <div class="perm"><b>DDL/ADMIN</b><label class="sw"><input type="checkbox" id="c-ddl" class="risky"><span></span></label><small>CREATE, DROP, EXEC, SET…</small></div>
-        </div></div>
-      <div class="field full"><label class="check"><input type="checkbox" id="c-enabled" checked> Conexão ativa (visível para a LLM)</label></div>
+<!-- ===================================================== Formulário -->
+<dialog id="dlg-conn" class="dialog dialog-form" aria-labelledby="dlg-conn-title">
+  <form id="conn-form" novalidate>
+    <header class="dialog-head">
+      <h2 id="dlg-conn-title">Nova conexão</h2>
+      <button type="button" class="btn btn-icon" data-close aria-label="Fechar">
+        <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+      </button>
+    </header>
+
+    <div class="dialog-body">
+      <div class="form-error" id="form-error" role="alert" hidden></div>
+
+      <fieldset>
+        <legend>Identificação</legend>
+        <div class="field">
+          <label for="c-type">Tipo de banco</label>
+          <select id="c-type" name="type"></select>
+        </div>
+        <div class="field">
+          <label for="c-name">Nome</label>
+          <p class="hint" id="c-name-hint">É como a IA chama a conexão. Letras, números e _ — espaços e hífens viram _.</p>
+          <input type="text" id="c-name" name="name" required autocomplete="off" spellcheck="false" aria-describedby="c-name-hint c-name-err" placeholder="ex.: pagamentos_prod">
+          <p class="field-error" id="c-name-err" hidden></p>
+        </div>
+        <div class="field">
+          <label for="c-desc">Descrição para a IA <span class="optional">(opcional, recomendada)</span></label>
+          <p class="hint" id="c-desc-hint">O que há neste banco. A IA usa este texto para escolher a conexão certa.</p>
+          <textarea id="c-desc" name="description" rows="2" aria-describedby="c-desc-hint" placeholder="ex.: Pagamentos de produção: transações, estornos e conciliação."></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Acesso</legend>
+        <div class="field">
+          <label for="c-dsn">Connection string</label>
+          <p class="hint" id="c-dsn-hint"></p>
+          <div class="input-group">
+            <input type="password" id="c-dsn" name="dsn" autocomplete="off" spellcheck="false" aria-describedby="c-dsn-hint c-dsn-err">
+            <button type="button" class="btn" id="toggle-dsn" aria-pressed="false" aria-controls="c-dsn">
+              <svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>Mostrar</span>
+            </button>
+          </div>
+          <p class="field-error" id="c-dsn-err" hidden></p>
+          <p class="hint">Use um usuário do banco só com os grants necessários: ele é a última barreira.</p>
+        </div>
+        <div class="field" id="db-field" hidden>
+          <label for="c-db">Database padrão <span class="optional">(opcional se já estiver na URI)</span></label>
+          <input type="text" id="c-db" name="database" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="test-row">
+          <button type="button" class="btn" id="test-btn">
+            <svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Testar conexão
+          </button>
+          <output class="test-result" id="test-result"></output>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>O que a IA pode fazer</legend>
+        <ul class="perm-list">
+          <li class="perm is-locked">
+            <span class="perm-text"><b>Ler dados</b> <code>SELECT</code><small>Sempre liberado, em transação que é desfeita.</small></span>
+            <span class="perm-fixed"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Sempre</span>
+          </li>
+          <li class="perm">
+            <label class="perm-text" for="c-insert"><b>Inserir</b> <code>INSERT</code><small>Criar linhas ou documentos.</small></label>
+            <input type="checkbox" class="switch" id="c-insert" name="allow_insert">
+          </li>
+          <li class="perm">
+            <label class="perm-text" for="c-update"><b>Alterar</b> <code>UPDATE</code><small>Mudar linhas ou documentos que já existem.</small></label>
+            <input type="checkbox" class="switch" id="c-update" name="allow_update">
+          </li>
+          <li class="perm is-risky">
+            <label class="perm-text" for="c-delete"><b>Apagar</b> <code>DELETE</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>Remove dados; não tem desfazer.</small></label>
+            <input type="checkbox" class="switch switch-risky" id="c-delete" name="allow_delete">
+          </li>
+          <li class="perm is-risky">
+            <label class="perm-text" for="c-ddl"><b>Estrutura e administração</b> <code>DDL</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>CREATE, DROP, ALTER, EXEC, GRANT, SET… Poder total no banco.</small></label>
+            <input type="checkbox" class="switch switch-risky" id="c-ddl" name="allow_ddl">
+          </li>
+        </ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>Limites</legend>
+        <div class="field-row">
+          <div class="field">
+            <label for="c-rows">Linhas por consulta</label>
+            <input type="number" id="c-rows" name="max_rows" min="1" inputmode="numeric" aria-describedby="c-rows-hint c-rows-err">
+            <p class="hint" id="c-rows-hint"></p>
+            <p class="field-error" id="c-rows-err" hidden></p>
+          </div>
+          <div class="field">
+            <label for="c-timeout">Timeout, em segundos</label>
+            <input type="number" id="c-timeout" name="timeout_sec" min="1" max="600" inputmode="numeric" aria-describedby="c-timeout-hint c-timeout-err">
+            <p class="hint" id="c-timeout-hint">Até 600.</p>
+            <p class="field-error" id="c-timeout-err" hidden></p>
+          </div>
+        </div>
+        <label class="switch-label switch-block">
+          <input type="checkbox" class="switch" id="c-enabled" name="enabled" checked>
+          <span><b>Conexão ativa</b><small>Desligada, a IA deixa de enxergá-la na hora.</small></span>
+        </label>
+      </fieldset>
     </div>
-    <div class="dlg-foot">
-      <span class="test-result" id="test-result"></span>
-      <button type="button" class="btn" id="test-btn">Testar conexão</button>
-      <button type="button" class="btn" id="cancel-btn">Cancelar</button>
-      <button type="submit" class="btn primary" id="save-btn">Salvar</button>
-    </div>
+
+    <footer class="dialog-foot">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="save-btn">Salvar conexão</button>
+    </footer>
   </form>
 </dialog>
 
-<div class="toast" id="toast" role="status"></div>
+<!-- ===================================================== Confirmação -->
+<dialog id="dlg-confirm" class="dialog dialog-confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+  <form method="dialog">
+    <div class="dialog-body">
+      <div class="confirm-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert"/></svg></div>
+      <h2 id="confirm-title">Confirmar</h2>
+      <div id="confirm-body"></div>
+    </div>
+    <footer class="dialog-foot">
+      <button type="submit" class="btn" value="cancel" id="confirm-cancel">Cancelar</button>
+      <button type="submit" class="btn btn-danger" value="ok" id="confirm-ok"></button>
+    </footer>
+  </form>
+</dialog>
 
-<script>
-const $ = (s, el = document) => el.querySelector(s);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let meta = { db_types: {} }, conns = [], editing = null, auditCursor = 0, auditTimer = null;
-
-async function api(method, path, body) {
-  const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
-  if (res.status === 204) return null;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
-  return data;
-}
-function toast(msg, isErr) {
-  const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : "");
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.className = "toast", isErr ? 5000 : 2500);
-}
-function fmtTime(ts) {
-  const d = new Date(ts);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pt-BR");
-}
-
-// ---- tabs
-document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
-function showTab(name) {
-  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
-  ["connections", "audit", "clients"].forEach(t => $("#tab-" + t).hidden = t !== name);
-  try { localStorage.setItem("dbmcp.tab", name); } catch {}
-  if (name === "audit") loadAudit(true);
-  scheduleAudit();
-}
-
-// ---- stats
-async function loadStats() {
-  try {
-    const s = await api("GET", "/api/audit/stats");
-    $("#stats").innerHTML = `<span class="stat">24h <b>${s.total}</b> chamadas</span><span class="stat denied"><b>${s.denied}</b> negadas</span><span class="stat error"><b>${s.error}</b> erros</span>`;
-  } catch {}
-}
-
-// ---- connections
-const permFields = [["allow_insert", "insert"], ["allow_update", "update"], ["allow_delete", "delete"], ["allow_ddl", "ddl"]];
-async function loadConnections() {
-  conns = await api("GET", "/api/connections");
-  const tb = $("#conn-rows");
-  $("#conn-empty").hidden = conns.length > 0;
-  tb.innerHTML = conns.map(c => {
-    const info = meta.db_types[c.type] || {};
-    const sw = (field, risky) => `<td class="center"><label class="sw"><input type="checkbox" data-id="${c.id}" data-field="${field}" ${risky ? 'class="risky"' : ""} ${c[field] ? "checked" : ""} aria-label="${field} ${esc(c.name)}"><span></span></label></td>`;
-    return `<tr>
-      <td><div class="name">${esc(c.name)}</div><div class="desc">${esc(c.description) || '<span class="muted">sem descrição</span>'}</div></td>
-      <td><span class="badge">${esc(info.label || c.type)}</span></td>
-      <td><div class="dsn" title="${esc(c.dsn_masked)}">${esc(c.dsn_masked)}</div>${c.database ? `<div class="small muted">db: ${esc(c.database)}</div>` : ""}</td>
-      ${sw("enabled")}${sw("allow_insert")}${sw("allow_update")}${sw("allow_delete", true)}${sw("allow_ddl", true)}
-      <td><div class="actions">
-        <button class="btn sm" data-act="test" data-id="${c.id}">Testar</button>
-        <button class="btn sm" data-act="edit" data-id="${c.id}">Editar</button>
-        <button class="btn sm danger" data-act="del" data-id="${c.id}">Excluir</button>
-      </div></td></tr>`;
-  }).join("");
-  const sel = $("#f-conn"), cur = sel.value;
-  sel.innerHTML = '<option value="">Todas</option>' + conns.map(c => `<option>${esc(c.name)}</option>`).join("");
-  sel.value = cur;
-}
-const payload = c => ({ name: c.name, type: c.type, description: c.description, dsn: "", database: c.database, enabled: c.enabled,
-  allow_insert: c.allow_insert, allow_update: c.allow_update, allow_delete: c.allow_delete, allow_ddl: c.allow_ddl,
-  max_rows: c.max_rows, timeout_sec: c.timeout_sec });
-
-$("#conn-rows").addEventListener("change", async e => {
-  const el = e.target; if (!el.dataset.field) return;
-  const c = conns.find(x => x.id == el.dataset.id);
-  const body = payload(c); body[el.dataset.field] = el.checked;
-  try {
-    await api("PUT", "/api/connections/" + c.id, body);
-    const label = el.dataset.field === "enabled" ? "Conexão" : el.dataset.field.replace("allow_", "").toUpperCase();
-    toast(`${label} ${el.checked ? "habilitado" : "desabilitado"} em ${c.name}`);
-    await loadConnections(); loadStats();
-  } catch (err) { el.checked = !el.checked; toast(err.message, true); }
-});
-$("#conn-rows").addEventListener("click", async e => {
-  const b = e.target.closest("button[data-act]"); if (!b) return;
-  const c = conns.find(x => x.id == b.dataset.id);
-  if (b.dataset.act === "edit") return openDialog(c);
-  if (b.dataset.act === "test") {
-    b.disabled = true; b.textContent = "Testando…";
-    try {
-      const r = await api("POST", "/api/test", { id: c.id, type: c.type, database: c.database });
-      r.ok ? toast(`${c.name}: conectado em ${r.ms} ms`) : toast(`${c.name}: ${r.error}`, true);
-    } catch (err) { toast(err.message, true); }
-    b.disabled = false; b.textContent = "Testar";
-  }
-  if (b.dataset.act === "del" && confirm(`Excluir a conexão "${c.name}"? A LLM perde o acesso imediatamente.`)) {
-    try { await api("DELETE", "/api/connections/" + c.id); toast("Conexão excluída"); await loadConnections(); }
-    catch (err) { toast(err.message, true); }
-  }
-});
-
-// ---- dialog
-function fillTypes() {
-  $("#c-type").innerHTML = Object.entries(meta.db_types).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
-}
-function onTypeChange() {
-  const t = $("#c-type").value, info = meta.db_types[t] || {};
-  $("#c-dsn").placeholder = info.dsn_example || "";
-  $("#dsn-hint").textContent = (editing ? "Deixe em branco para manter a atual. " : "") + "Exemplo: " + (info.dsn_example || "");
-  $("#db-field").hidden = t !== "mongodb";
-}
-function openDialog(c) {
-  editing = c || null;
-  $("#dlg-title").textContent = c ? `Editar ${c.name}` : "Nova conexão";
-  $("#c-name").value = c?.name || "";
-  $("#c-type").value = c?.type || "postgres";
-  $("#c-desc").value = c?.description || "";
-  $("#c-dsn").value = ""; $("#c-dsn").type = "password"; $("#toggle-dsn").textContent = "Mostrar";
-  $("#c-dsn").required = !c;
-  $("#c-db").value = c?.database || "";
-  $("#c-rows").value = c?.max_rows || 100; $("#c-rows").max = meta.max_rows_cap;
-  $("#c-timeout").value = c?.timeout_sec || 30;
-  $("#c-insert").checked = !!c?.allow_insert; $("#c-update").checked = !!c?.allow_update;
-  $("#c-delete").checked = !!c?.allow_delete; $("#c-ddl").checked = !!c?.allow_ddl;
-  $("#c-enabled").checked = c ? c.enabled : true;
-  $("#test-result").textContent = ""; $("#test-result").className = "test-result";
-  onTypeChange();
-  $("#dlg").showModal();
-}
-function formBody() {
-  return { name: $("#c-name").value.trim(), type: $("#c-type").value, description: $("#c-desc").value, dsn: $("#c-dsn").value,
-    database: $("#c-type").value === "mongodb" ? $("#c-db").value : "", enabled: $("#c-enabled").checked,
-    allow_insert: $("#c-insert").checked, allow_update: $("#c-update").checked, allow_delete: $("#c-delete").checked,
-    allow_ddl: $("#c-ddl").checked, max_rows: +$("#c-rows").value, timeout_sec: +$("#c-timeout").value };
-}
-$("#c-type").addEventListener("change", onTypeChange);
-$("#new-conn").addEventListener("click", () => openDialog());
-$("#cancel-btn").addEventListener("click", () => $("#dlg").close());
-$("#toggle-dsn").addEventListener("click", () => {
-  const i = $("#c-dsn"); i.type = i.type === "password" ? "text" : "password";
-  $("#toggle-dsn").textContent = i.type === "password" ? "Mostrar" : "Ocultar";
-});
-$("#test-btn").addEventListener("click", async () => {
-  const r = $("#test-result"), b = formBody();
-  r.className = "test-result"; r.textContent = "Testando…";
-  try {
-    const res = await api("POST", "/api/test", { id: editing?.id || 0, type: b.type, dsn: b.dsn, database: b.database });
-    r.className = "test-result " + (res.ok ? "ok" : "err");
-    r.textContent = res.ok ? `Conectado (${res.ms} ms)` : res.error;
-  } catch (err) { r.className = "test-result err"; r.textContent = err.message; }
-});
-$("#conn-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  try {
-    if (editing) await api("PUT", "/api/connections/" + editing.id, formBody());
-    else await api("POST", "/api/connections", formBody());
-    $("#dlg").close(); toast("Conexão salva"); await loadConnections();
-  } catch (err) { $("#test-result").className = "test-result err"; $("#test-result").textContent = err.message; }
-});
-
-// ---- audit
-function auditQuery() {
-  const p = new URLSearchParams();
-  const set = (k, v) => v && p.set(k, v);
-  set("connection", $("#f-conn").value); set("status", $("#f-status").value); set("tool", $("#f-tool").value);
-  set("operation", $("#f-op").value); set("since", $("#f-since").value); set("q", $("#f-q").value.trim());
-  return p;
-}
-const statusLabel = { ok: "OK", denied: "Negado", error: "Erro" };
-function auditRow(e) {
-  const tool = e.tool === "admin" ? `<span class="badge admin">admin</span>` : `<span class="mono">${esc(e.tool)}</span>`;
-  return `<tr class="entry" data-id="${e.id}">
-    <td class="small" style="white-space:nowrap">${fmtTime(e.ts)}</td>
-    <td class="small">${esc(e.client)}</td>
-    <td class="name small">${esc(e.connection) || '<span class="muted">—</span>'}</td>
-    <td>${tool}</td>
-    <td class="mono small">${esc(e.operation)}</td>
-    <td><span class="badge ${e.status}">${statusLabel[e.status] || esc(e.status)}</span></td>
-    <td class="center small">${e.rows}</td>
-    <td class="center small">${e.duration_ms}</td>
-    <td><div class="stmt" title="${esc(e.statement)}">${esc(e.statement)}</div></td></tr>
-    <tr class="detail" data-for="${e.id}" hidden><td colspan="9"><dl class="kv">
-      <dt>Statement</dt><dd><pre>${esc(e.statement) || "—"}</pre></dd>
-      ${e.params ? `<dt>Parâmetros</dt><dd><pre>${esc(e.params)}</pre></dd>` : ""}
-      ${e.message ? `<dt>Mensagem</dt><dd><pre>${esc(e.message)}</pre></dd>` : ""}
-      <dt>Banco</dt><dd class="small">${esc(e.db_type) || "—"} · id ${e.id} · ${new Date(e.ts).toISOString()}</dd>
-    </dl></td></tr>`;
-}
-async function loadAudit(reset) {
-  const p = auditQuery(); p.set("limit", 100);
-  if (!reset && auditCursor) p.set("before_id", auditCursor);
-  const tb = $("#audit-rows");
-  const open = [...tb.querySelectorAll("tr.detail:not([hidden])")].map(r => r.dataset.for);
-  try {
-    const rows = await api("GET", "/api/audit?" + p);
-    const html = rows.map(auditRow).join("");
-    if (reset) tb.innerHTML = html; else tb.insertAdjacentHTML("beforeend", html);
-    open.forEach(id => { const d = tb.querySelector(`tr.detail[data-for="${id}"]`); if (d) d.hidden = false; });
-    if (rows.length) auditCursor = rows[rows.length - 1].id; else if (reset) auditCursor = 0;
-    $("#audit-empty").hidden = tb.children.length > 0;
-    $("#audit-more").hidden = rows.length < 100;
-    const ex = auditQuery(); $("#export").href = "/api/audit/export?" + ex;
-  } catch (err) { toast(err.message, true); }
-}
-$("#audit-rows").addEventListener("click", e => {
-  const tr = e.target.closest("tr.entry"); if (!tr) return;
-  const d = $(`tr.detail[data-for="${tr.dataset.id}"]`); d.hidden = !d.hidden;
-});
-$("#load-more").addEventListener("click", () => loadAudit(false));
-["#f-conn", "#f-status", "#f-tool", "#f-op", "#f-since"].forEach(s => $(s).addEventListener("change", () => loadAudit(true)));
-$("#f-q").addEventListener("input", () => { clearTimeout(loadAudit.t); loadAudit.t = setTimeout(() => loadAudit(true), 300); });
-$("#auto-refresh").addEventListener("change", scheduleAudit);
-function scheduleAudit() {
-  clearInterval(auditTimer);
-  auditTimer = setInterval(() => {
-    loadStats();
-    // only refresh the first page, so "load more" results are not lost
-    if (!$("#tab-audit").hidden && $("#auto-refresh").checked && $("#audit-rows").children.length <= 200) loadAudit(true);
-  }, 5000);
-}
-
-// ---- client snippets
-function renderClients() {
-  const url = location.origin + "/mcp";
-  $("#endpoint").textContent = url;
-  const labels = meta.mcp_clients || [];
-  $("#client-labels").innerHTML = labels.length ? "Tokens configurados para: " + labels.map(l => `<span class="badge">${esc(l)}</span>`).join(" ") : "";
-  $("#snip-claude").textContent = `claude mcp add --transport http --scope user dbmcp ${url} \\\n  --header "Authorization: Bearer <SEU_TOKEN>"`;
-  $("#snip-vscode").textContent = JSON.stringify({ servers: { dbmcp: { type: "http", url, headers: { Authorization: "Bearer <SEU_TOKEN>" } } } }, null, 2);
-  $("#snip-generic").textContent = JSON.stringify({ mcpServers: { dbmcp: { type: "http", url, headers: { Authorization: "Bearer <SEU_TOKEN>" } } } }, null, 2);
-}
-document.querySelectorAll(".code .copy").forEach(b => b.addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText(b.nextElementSibling.textContent); toast("Copiado"); } catch { toast("Não foi possível copiar", true); }
-}));
-
-// ---- boot
-(async () => {
-  try {
-    meta = await api("GET", "/api/meta");
-    $("#version").textContent = meta.version;
-    $("#retention").textContent = `Registros são mantidos por ${meta.retention_days} dias. Clique numa linha para ver o statement completo.`;
-    fillTypes(); renderClients();
-    await loadConnections(); loadStats();
-    let tab = "connections"; try { tab = localStorage.getItem("dbmcp.tab") || tab; } catch {}
-    showTab(tab);
-  } catch (err) { toast(err.message, true); }
-})();
-</script>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 </body>
 </html>

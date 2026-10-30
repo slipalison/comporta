@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"dbmcp/internal/db"
-	"dbmcp/internal/model"
-	"dbmcp/internal/store"
+	"github.com/slipalison/comporta/internal/db"
+	"github.com/slipalison/comporta/internal/model"
+	"github.com/slipalison/comporta/internal/store"
 )
 
 //go:embed static
@@ -42,17 +42,24 @@ type Server struct {
 	user     string
 	pass     string
 	meta     Meta
+	limiter  *loginLimiter
 }
 
 func New(st *store.Store, reg *db.Registry, user, pass string, meta Meta, onChange func()) *Server {
 	meta.DBTypes = model.DBTypes
-	return &Server{store: st, reg: reg, user: user, pass: pass, meta: meta, onChange: onChange}
+	return &Server{store: st, reg: reg, user: user, pass: pass, meta: meta, onChange: onChange, limiter: newLoginLimiter()}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	assets, _ := fs.Sub(static, "static")
-	mux.Handle("GET /", http.FileServerFS(assets))
+	files := http.FileServerFS(assets)
+	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Embedded files have no modification time: revalidate on every load
+		// so a new release is never served from a stale cache.
+		w.Header().Set("Cache-Control", "no-cache")
+		files.ServeHTTP(w, r)
+	}))
 	mux.HandleFunc("GET /api/meta", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, http.StatusOK, s.meta) })
 	mux.HandleFunc("GET /api/connections", s.listConnections)
 	mux.HandleFunc("POST /api/connections", s.createConnection)
@@ -69,10 +76,19 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) basicAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := clientIP(r)
+		if wait := s.limiter.blocked(host); wait > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+			http.Error(w, "too many failed logins, try again later", http.StatusTooManyRequests)
+			return
+		}
 		u, p, ok := r.BasicAuth()
 		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(s.user)) != 1 ||
 			subtle.ConstantTimeCompare([]byte(p), []byte(s.pass)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="dbmcp", charset="UTF-8"`)
+			if ok {
+				s.limiter.fail(host)
+			}
+			w.Header().Set("WWW-Authenticate", `Basic realm="comporta", charset="UTF-8"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -80,10 +96,18 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 	})
 }
 
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
@@ -93,11 +117,18 @@ func securityHeaders(next http.Handler) http.Handler {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("writing response", "err", err)
+	}
 }
 
 func writeErr(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	body := map[string]string{"error": err.Error()}
+	var fe *fieldError
+	if errors.As(err, &fe) {
+		body["field"] = fe.Field
+	}
+	writeJSON(w, status, body)
 }
 
 type connView struct {
@@ -133,23 +164,40 @@ type connInput struct {
 	TimeoutSec  int    `json:"timeout_sec"`
 }
 
-var nameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{1,62}$`)
+var (
+	nameRe    = regexp.MustCompile(`^[a-z][a-z0-9_]{1,62}$`)
+	nameSepRe = regexp.MustCompile(`[\s.-]+`)
+)
+
+// fieldError is a validation error the UI shows next to one form field.
+type fieldError struct {
+	Field string
+	Msg   string
+}
+
+func (e *fieldError) Error() string { return e.Msg }
+
+// NormalizeName accepts what people type ("Pagamentos Prod", "pagamentos-prod")
+// and returns the canonical connection name ("pagamentos_prod").
+func NormalizeName(s string) string {
+	return nameSepRe.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), "_")
+}
 
 // apply validates the input onto c. An empty DSN keeps the current one.
 func (s *Server) apply(in connInput, c *model.Connection) error {
-	in.Name = strings.TrimSpace(in.Name)
+	in.Name = NormalizeName(in.Name)
 	if !nameRe.MatchString(in.Name) {
-		return errors.New("nome deve ter 2-63 caracteres: letras minúsculas, números e _, começando por letra")
+		return &fieldError{"name", "Use de 2 a 63 caracteres: letras sem acento, números e _, começando por letra. Ex.: pagamentos_prod"}
 	}
 	t := model.DBType(in.Type)
 	if !t.Valid() {
-		return fmt.Errorf("tipo de banco inválido: %q", in.Type)
+		return &fieldError{"type", fmt.Sprintf("Tipo de banco desconhecido: %q", in.Type)}
 	}
 	if in.DSN = strings.TrimSpace(in.DSN); in.DSN != "" {
 		c.DSN = in.DSN
 	}
 	if c.DSN == "" {
-		return errors.New("connection string é obrigatória")
+		return &fieldError{"dsn", "Informe a connection string. Ex.: " + t.Info().DSNExample}
 	}
 	if in.MaxRows <= 0 {
 		in.MaxRows = 100
@@ -158,16 +206,16 @@ func (s *Server) apply(in connInput, c *model.Connection) error {
 		in.TimeoutSec = 30
 	}
 	if in.MaxRows > s.meta.MaxRowsCap {
-		return fmt.Errorf("máximo de linhas não pode passar de %d", s.meta.MaxRowsCap)
+		return &fieldError{"max_rows", fmt.Sprintf("O teto deste servidor é %d linhas por consulta.", s.meta.MaxRowsCap)}
 	}
 	if in.TimeoutSec > 600 {
-		return errors.New("timeout máximo é 600s")
+		return &fieldError{"timeout_sec", "O timeout máximo é 600 segundos."}
 	}
 	c.Name, c.Type, c.Description, c.Database = in.Name, t, strings.TrimSpace(in.Description), strings.TrimSpace(in.Database)
 	c.Enabled, c.AllowInsert, c.AllowUpdate, c.AllowDelete, c.AllowDDL = in.Enabled, in.AllowInsert, in.AllowUpdate, in.AllowDelete, in.AllowDDL
 	c.MaxRows, c.TimeoutSec = in.MaxRows, in.TimeoutSec
 	if err := s.reg.Validate(*c); err != nil {
-		return fmt.Errorf("connection string inválida para %s: %w", t, err)
+		return &fieldError{"dsn", fmt.Sprintf("Connection string inválida para %s: %v", t.Info().Label, err)}
 	}
 	return nil
 }
@@ -183,7 +231,7 @@ func pathID(r *http.Request) (int64, error) {
 }
 
 func (s *Server) adminAudit(r *http.Request, op string, c model.Connection, detail string) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	host := clientIP(r)
 	err := s.store.InsertAudit(context.WithoutCancel(r.Context()), model.AuditEntry{
 		Client: "admin-ui (" + s.user + "@" + host + ")", Connection: c.Name, DBType: string(c.Type),
 		Tool: "admin", Operation: op, Statement: detail, Status: model.StatusOK,
@@ -211,7 +259,7 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.CreateConnection(r.Context(), &c); err != nil {
-		writeErr(w, http.StatusConflict, err)
+		writeErr(w, http.StatusConflict, conflictErr(err))
 		return
 	}
 	s.adminAudit(r, "connection.create", c, fmt.Sprintf("created %s connection; enabled=%t; allowed: %s",
@@ -242,7 +290,7 @@ func (s *Server) updateConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.UpdateConnection(r.Context(), &c); err != nil {
-		writeErr(w, http.StatusConflict, err)
+		writeErr(w, http.StatusConflict, conflictErr(err))
 		return
 	}
 	s.reg.Forget(id)
@@ -272,6 +320,14 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 	s.adminAudit(r, "connection.delete", c, "deleted")
 	s.changed()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// conflictErr points a duplicate-name error at the name field.
+func conflictErr(err error) error {
+	if errors.Is(err, store.ErrDuplicateName) {
+		return &fieldError{"name", err.Error()}
+	}
+	return err
 }
 
 func joinOps(ops []model.Op) string {
@@ -379,12 +435,21 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) auditStats(w http.ResponseWriter, r *http.Request) {
-	st, err := s.store.Stats(r.Context(), time.Now().Add(-24*time.Hour))
+	since := time.Now().Add(-24 * time.Hour)
+	st, err := s.store.Stats(r.Context(), since)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	act, err := s.store.ConnectionActivity(r.Context(), since)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		store.AuditStats
+		Connections map[string]store.Activity `json:"connections"`
+	}{st, act})
 }
 
 func (s *Server) exportAudit(w http.ResponseWriter, r *http.Request) {
@@ -394,15 +459,19 @@ func (s *Server) exportAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dbmcp-audit-%s.csv"`, time.Now().Format("20060102-150405")))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="comporta-audit-%s.csv"`, time.Now().Format("20060102-150405")))
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"id", "timestamp", "client", "connection", "db_type", "tool", "operation", "status", "rows", "duration_ms", "statement", "params", "message"})
+	_ = cw.Write([]string{"id", "timestamp", "client", "connection", "db_type", "tool", "operation", "status", "rows", "duration_ms", "statement", "params", "message"})
 	for _, e := range entries {
-		cw.Write([]string{strconv.FormatInt(e.ID, 10), e.Time.Format(time.RFC3339), e.Client, e.Connection, e.DBType, e.Tool,
+		// csv.Writer keeps the first error; it is reported by cw.Error below.
+		_ = cw.Write([]string{strconv.FormatInt(e.ID, 10), e.Time.Format(time.RFC3339), csvSafe(e.Client), csvSafe(e.Connection), e.DBType, e.Tool,
 			e.Operation, e.Status, strconv.FormatInt(e.Rows, 10), strconv.FormatInt(e.DurationMS, 10),
 			csvSafe(e.Statement), csvSafe(e.Params), csvSafe(e.Message)})
 	}
 	cw.Flush()
+	if err := cw.Error(); err != nil {
+		slog.Error("audit export interrupted", "err", err)
+	}
 }
 
 // csvSafe defuses spreadsheet formula injection in exported text.
