@@ -46,6 +46,8 @@ const OPS = [
   { field: "allow_delete", key: "delete", sql: "DELETE", risky: true },
   { field: "allow_ddl", key: "ddl", sql: "DDL", risky: true },
 ];
+const opLabel = (op) => t("op." + op.key);
+const opRisk = (op) => t("risk." + op.key);
 
 // --------------------------------------------------------------------- api
 class ApiError extends Error {
@@ -238,7 +240,7 @@ function connCard(c) {
   const chips = OPS.map((op) => {
     const on = !!c[op.field];
     return `<button type="button" class="chip${op.risky ? " is-risky" : ""}" data-act="perm" data-field="${op.field}" aria-pressed="${on}"
-      aria-label="${esc(t("conn.permAria", { sql: op.sql, label: t(`op.${op.key}`).toLowerCase(), name: c.name }))}" title="${esc(t(on ? "conn.permOn" : "conn.permOff"))}">${icon("check")}${op.sql}</button>`;
+      aria-label="${esc(t("conn.permAria", { sql: op.sql, label: opLabel(op).toLowerCase(), name: c.name }))}" title="${esc(t(on ? "conn.permOn" : "conn.permOff"))}">${icon("check")}${op.sql}</button>`;
   }).join("");
   return `<li class="conn${c.enabled ? "" : " is-off"}" data-id="${c.id}">
     <div class="conn-main">
@@ -347,7 +349,7 @@ async function togglePerm(c, field, chip) {
   if (next && op.risky) {
     const ok = await confirmDialog({
       title: t("confirm.allowTitleOn", { sql: op.sql, name: c.name }),
-      body: `<p>${esc(t(`risk.${op.key}`))}</p><p>${esc(t("confirm.allowNote"))}</p>`,
+      body: `<p>${esc(opRisk(op))}</p><p>${esc(t("confirm.allowNote"))}</p>`,
       ok: t("confirm.allowOk", { sql: op.sql }),
     });
     if (!ok) return chip.focus();
@@ -530,7 +532,7 @@ form.addEventListener("input", () => { state.formDirty = true; });
 for (const op of OPS.filter((o) => o.risky)) {
   $(`#c-${op.key}`).addEventListener("change", async (e) => {
     if (!e.target.checked) return;
-    const ok = await confirmDialog({ title: t("confirm.allowTitle", { sql: op.sql }), body: `<p>${esc(t(`risk.${op.key}`))}</p>`, ok: t("confirm.allowOk", { sql: op.sql }) });
+    const ok = await confirmDialog({ title: t("confirm.allowTitle", { sql: op.sql }), body: `<p>${esc(opRisk(op))}</p>`, ok: t("confirm.allowOk", { sql: op.sql }) });
     e.target.checked = ok;
     e.target.focus();
   });

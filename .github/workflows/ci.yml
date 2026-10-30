@@ -58,6 +58,9 @@ jobs:
         sonar.test.inclusions=**/*_test.go
         sonar.go.coverage.reportPaths=coverage.out
         sonar.coverage.exclusions=internal/web/static/**
+        # Translations are parallel by nature: the en and pt dictionaries have
+        # the same keys, and duplication detection ignores the text itself.
+        sonar.cpd.exclusions=internal/web/static/i18n.js
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 

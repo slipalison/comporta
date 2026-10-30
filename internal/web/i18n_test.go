@@ -11,7 +11,7 @@ import (
 var (
 	dictRe   = regexp.MustCompile(`(?s)\nconst (en|pt) = \{(.*?)\n\};`)
 	keyRe    = regexp.MustCompile(`(?m)^  "([a-zA-Z0-9_.]+)":`)
-	jsKeyRe  = regexp.MustCompile(`\bt\(\s*"([a-zA-Z0-9_.]+)"`)
+	jsKeyRe  = regexp.MustCompile(`\bt\(\s*"([a-zA-Z0-9_.]+)"\s*[,)]`) // whole keys; built keys are listed in usedKeys
 	attrRe   = regexp.MustCompile(`data-i18n-attr="([^"]+)"`)
 	srvKeyRe = regexp.MustCompile(`Code: "([a-z_]+)"`)
 )
@@ -31,31 +31,31 @@ func dictKeys(t *testing.T, js, lang string) []string {
 	return nil
 }
 
-// Both languages have the same keys, and every key the page, the script or
-// the server's error codes use exists.
-func TestTranslationsComplete(t *testing.T) {
-	read := func(name string) string {
-		b, err := static.ReadFile("static/" + name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(b)
+func readStatic(t *testing.T, name string) string {
+	t.Helper()
+	b, err := static.ReadFile("static/" + name)
+	if err != nil {
+		t.Fatal(err)
 	}
-	js := read("i18n.js")
-	en, pt := dictKeys(t, js, "en"), dictKeys(t, js, "pt")
-	for _, k := range en {
-		if !slices.Contains(pt, k) {
-			t.Errorf("pt is missing %q", k)
-		}
-	}
-	for _, k := range pt {
-		if !slices.Contains(en, k) {
-			t.Errorf("en is missing %q", k)
-		}
-	}
+	return string(b)
+}
 
+// missing returns the keys of want that are not in have.
+func missing(want, have []string) []string {
+	var out []string
+	for _, k := range want {
+		if !slices.Contains(have, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// usedKeys collects every key the page, the script and the server's error
+// codes refer to.
+func usedKeys(t *testing.T) []string {
+	html := readStatic(t, "index.html")
 	var used []string
-	html := read("index.html")
 	for _, m := range regexp.MustCompile(`data-i18n(?:-html)?="([^"]+)"`).FindAllStringSubmatch(html, -1) {
 		used = append(used, m[1])
 	}
@@ -66,25 +66,29 @@ func TestTranslationsComplete(t *testing.T) {
 			}
 		}
 	}
-	for _, m := range jsKeyRe.FindAllStringSubmatch(read("app.js"), -1) {
+	for _, m := range jsKeyRe.FindAllStringSubmatch(readStatic(t, "app.js"), -1) {
 		used = append(used, m[1])
 	}
-	src, err := webSource()
+	src, err := os.ReadFile("web.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range srvKeyRe.FindAllStringSubmatch(src, -1) {
+	for _, m := range srvKeyRe.FindAllStringSubmatch(string(src), -1) {
 		used = append(used, "srv."+m[1])
 	}
-	for _, k := range used {
-		if !slices.Contains(en, k) {
-			t.Errorf("key %q is used but not translated", k)
-		}
-	}
+	// Keys app.js builds from data: t("op." + key), t("risk." + key), t(`status.${status}`).
+	used = append(used, "op.insert", "op.update", "op.delete", "op.ddl", "risk.delete", "risk.ddl",
+		"status.ok", "status.denied", "status.error")
+	return used
 }
 
-// webSource is web.go, where the server's validation codes are written.
-func webSource() (string, error) {
-	b, err := os.ReadFile("web.go")
-	return string(b), err
+// Both languages have the same keys, and every key the page, the script or
+// the server's error codes use exists.
+func TestTranslationsComplete(t *testing.T) {
+	js := readStatic(t, "i18n.js")
+	en, pt := dictKeys(t, js, "en"), dictKeys(t, js, "pt")
+	failIf(t, len(en) < 100, "only %d English keys found: is the dictionary regexp still right?", len(en))
+	failIf(t, len(missing(en, pt)) > 0, "pt is missing %v", missing(en, pt))
+	failIf(t, len(missing(pt, en)) > 0, "en is missing %v", missing(pt, en))
+	failIf(t, len(missing(usedKeys(t), en)) > 0, "used but not translated: %v", missing(usedKeys(t), en))
 }
