@@ -217,7 +217,8 @@ func run(ctx context.Context) error {
 		return err
 	case <-ctx.Done():
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// ctx is already cancelled here: the shutdown gets its own deadline.
+	shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdown)
 }

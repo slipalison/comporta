@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	_ "github.com/microsoft/go-mssqldb"
+	_ "github.com/jackc/pgx/v5/stdlib"  // registers the "pgx" database/sql driver
+	_ "github.com/microsoft/go-mssqldb" // registers the "sqlserver" driver
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/connstring"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // registers the "sqlite" driver (pure Go, no cgo)
 
 	"github.com/slipalison/comporta/internal/model"
 )

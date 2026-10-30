@@ -257,7 +257,7 @@ func (s *Server) buildTools(conns []model.Connection) []toolDef {
 			"collection": str("Collection name."),
 		}
 	}
-	with := func(base map[string]*jsonschema.Schema, extra map[string]*jsonschema.Schema) map[string]*jsonschema.Schema {
+	with := func(base, extra map[string]*jsonschema.Schema) map[string]*jsonschema.Schema {
 		for k, v := range extra {
 			base[k] = v
 		}

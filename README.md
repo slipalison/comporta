@@ -27,7 +27,7 @@ docker compose up -d --build
 
 Para bancos que rodam no host, use `host.docker.internal` no lugar de `localhost` na connection string.
 
-A imagem publicada é `ghcr.io/slipalison/comporta:<versão>`.
+A imagem publicada é `ghcr.io/slipalison/comporta:<versão>`, e a mesma imagem (o mesmo digest) também vai para o Docker Hub a cada versão.
 
 ### Conectar um cliente
 

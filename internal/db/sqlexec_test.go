@@ -104,3 +104,21 @@ func failIf(t *testing.T, bad bool, format string, args ...any) {
 		t.Fatalf(format, args...)
 	}
 }
+
+// The schema queries of every dialect take the schema filter as a bound
+// parameter, never as text.
+func TestSchemaQueries(t *testing.T) {
+	for _, dbType := range []model.DBType{model.Postgres, model.SQLServer, model.MySQL, model.SQLite} {
+		for _, schema := range []string{"", "vendas"} {
+			q, args, err := tablesQuery(dbType, schema)
+			failIf(t, err != nil || strings.Contains(q, "vendas"), "%s tables: %v %q", dbType, err, q)
+			failIf(t, schema != "" && dbType != model.SQLite && len(args) != 1, "%s tables args: %v", dbType, args)
+			q, args, err = columnsQuery(dbType, schema, "pedidos")
+			failIf(t, err != nil || strings.Contains(q, "pedidos") || len(args) == 0, "%s columns: %v %q", dbType, err, q)
+		}
+	}
+	_, _, err := tablesQuery(model.MongoDB, "")
+	failIf(t, err == nil, "MongoDB has no SQL schema query")
+	_, _, err = columnsQuery(model.MongoDB, "", "x")
+	failIf(t, err == nil, "MongoDB has no SQL schema query")
+}

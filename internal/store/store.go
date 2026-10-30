@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // registers the "sqlite" driver for the gateway's own store
 
 	"github.com/slipalison/comporta/internal/model"
 )
@@ -267,51 +267,31 @@ type AuditFilter struct {
 	Limit      int
 }
 
-func (f AuditFilter) where() (string, []any) {
-	var conds []string
-	var args []any
-	add := func(cond string, v any) { conds = append(conds, cond); args = append(args, v) }
-	if f.Connection != "" {
-		add("connection = ?", f.Connection)
+// auditQuery is fixed text: every filter is always present and switched off
+// by its empty value, so no SQL is assembled at run time.
+const auditQuery = `SELECT id, ts, client, connection, db_type, tool, operation, statement,
+	params, status, message, rows, duration_ms FROM audit_log
+	WHERE (?1 = '' OR connection = ?1)
+	  AND (?2 = '' OR status = ?2)
+	  AND (?3 = '' OR operation LIKE '%' || ?3 || '%')
+	  AND (?4 = '' OR tool = ?4)
+	  AND (?5 = '' OR client LIKE '%' || ?5 || '%')
+	  AND (?6 = '' OR statement LIKE '%' || ?6 || '%' OR message LIKE '%' || ?6 || '%' OR params LIKE '%' || ?6 || '%')
+	  AND (?7 = 0 OR ts >= ?7)
+	  AND (?8 = 0 OR ts <= ?8)
+	  AND (?9 = 0 OR id < ?9)
+	ORDER BY id DESC LIMIT ?10`
+
+func unixMilli(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
 	}
-	if f.Status != "" {
-		add("status = ?", f.Status)
-	}
-	if f.Operation != "" {
-		add("operation LIKE ?", "%"+f.Operation+"%")
-	}
-	if f.Tool != "" {
-		add("tool = ?", f.Tool)
-	}
-	if f.Client != "" {
-		add("client LIKE ?", "%"+f.Client+"%")
-	}
-	if f.Search != "" {
-		conds = append(conds, "(statement LIKE ? OR message LIKE ? OR params LIKE ?)")
-		q := "%" + f.Search + "%"
-		args = append(args, q, q, q)
-	}
-	if !f.Since.IsZero() {
-		add("ts >= ?", f.Since.UnixMilli())
-	}
-	if !f.Until.IsZero() {
-		add("ts <= ?", f.Until.UnixMilli())
-	}
-	if f.BeforeID > 0 {
-		add("id < ?", f.BeforeID)
-	}
-	if len(conds) == 0 {
-		return "", nil
-	}
-	return " WHERE " + strings.Join(conds, " AND "), args
+	return t.UnixMilli()
 }
 
 func (s *Store) ListAudit(ctx context.Context, f AuditFilter) ([]model.AuditEntry, error) {
-	where, args := f.where()
-	args = append(args, f.Limit)
-	// #nosec G202 -- `where` joins fixed conditions; every value is a ? placeholder in args.
-	rows, err := s.db.QueryContext(ctx, `SELECT id, ts, client, connection, db_type, tool, operation, statement,
-		params, status, message, rows, duration_ms FROM audit_log`+where+` ORDER BY id DESC LIMIT ?`, args...)
+	rows, err := s.db.QueryContext(ctx, auditQuery, f.Connection, f.Status, f.Operation, f.Tool, f.Client, f.Search,
+		unixMilli(f.Since), unixMilli(f.Until), f.BeforeID, f.Limit)
 	if err != nil {
 		return nil, err
 	}
