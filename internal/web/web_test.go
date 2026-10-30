@@ -138,26 +138,26 @@ func TestConnectionLifecycle(t *testing.T) {
 	created := decodeBody[connView](t, rec)
 	failIf(t, created.Name != "loja_local" || created.MaxRows != 100 || created.TimeoutSec != 30, "created: %+v", created)
 
-	errs := []struct{ body, field string }{
-		{`{"name":"1x","type":"sqlite","dsn":"a.db"}`, "name"},
-		{`{"name":"abc","type":"oracle","dsn":"x"}`, "type"},
-		{`{"name":"abc","type":"postgres"}`, "dsn"},
-		{`{"name":"abc","type":"sqlite","dsn":"a.db","max_rows":501}`, "max_rows"},
-		{`{"name":"abc","type":"sqlite","dsn":"a.db","timeout_sec":601}`, "timeout_sec"},
-		{`{"name":"abc","type":"mongodb","dsn":"http://x"}`, "dsn"},
-		{`{"name":"abc","type":"sqlite","dsn":"` + e.st.Path + `"}`, "dsn"},
+	errs := []struct{ body, field, code string }{
+		{`{"name":"1x","type":"sqlite","dsn":"a.db"}`, "name", "name_invalid"},
+		{`{"name":"abc","type":"oracle","dsn":"x"}`, "type", "type_invalid"},
+		{`{"name":"abc","type":"postgres"}`, "dsn", "dsn_required"},
+		{`{"name":"abc","type":"sqlite","dsn":"a.db","max_rows":501}`, "max_rows", "max_rows_cap"},
+		{`{"name":"abc","type":"sqlite","dsn":"a.db","timeout_sec":601}`, "timeout_sec", "timeout_max"},
+		{`{"name":"abc","type":"mongodb","dsn":"http://x"}`, "dsn", "dsn_invalid"},
+		{`{"name":"abc","type":"sqlite","dsn":"` + e.st.Path + `"}`, "dsn", "dsn_invalid"},
 	}
 	for _, tc := range errs {
 		rec := e.do(t, http.MethodPost, "/api/connections", tc.body)
-		got := decodeBody[map[string]string](t, rec)
-		if rec.Code != http.StatusBadRequest || got["field"] != tc.field {
-			t.Errorf("%s: %d %v, want field %s", tc.body, rec.Code, got, tc.field)
+		got := decodeBody[apiError](t, rec)
+		if rec.Code != http.StatusBadRequest || got.Field != tc.field || got.Code != tc.code || got.Error == "" {
+			t.Errorf("%s: %d %+v, want field %s code %s", tc.body, rec.Code, got, tc.field, tc.code)
 		}
 	}
 	rec = e.do(t, http.MethodPost, "/api/connections", body)
-	if got := decodeBody[map[string]string](t, rec); rec.Code != http.StatusConflict || got["field"] != "name" {
-		t.Fatalf("duplicate: %d %v", rec.Code, got)
-	}
+	dup := decodeBody[apiError](t, rec)
+	failIf(t, rec.Code != http.StatusConflict || dup.Field != "name" || dup.Code != "name_taken" || dup.Params["name"] != "loja_local",
+		"duplicate: %d %+v", rec.Code, dup)
 
 	id := "/api/connections/" + itoa(created.ID)
 	rec = e.do(t, http.MethodPut, id, `{"name":"loja_local","type":"sqlite","enabled":false,"allow_ddl":true,"description":"nova"}`)

@@ -122,11 +122,21 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// apiError is the JSON body of every error. Field, Code and Params are set for
+// validation errors: the UI translates Code (see srv.* in static/i18n.js) and
+// falls back to Error, which is always in English.
+type apiError struct {
+	Error  string            `json:"error"`
+	Field  string            `json:"field,omitempty"`
+	Code   string            `json:"code,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
+}
+
 func writeErr(w http.ResponseWriter, status int, err error) {
-	body := map[string]string{"error": err.Error()}
+	body := apiError{Error: err.Error()}
 	var fe *fieldError
 	if errors.As(err, &fe) {
-		body["field"] = fe.Field
+		body.Field, body.Code, body.Params = fe.Field, fe.Code, fe.Params
 	}
 	writeJSON(w, status, body)
 }
@@ -171,8 +181,10 @@ var (
 
 // fieldError is a validation error the UI shows next to one form field.
 type fieldError struct {
-	Field string
-	Msg   string
+	Field  string
+	Code   string
+	Msg    string
+	Params map[string]string
 }
 
 func (e *fieldError) Error() string { return e.Msg }
@@ -187,17 +199,20 @@ func NormalizeName(s string) string {
 func (s *Server) apply(in connInput, c *model.Connection) error {
 	in.Name = NormalizeName(in.Name)
 	if !nameRe.MatchString(in.Name) {
-		return &fieldError{"name", "Use de 2 a 63 caracteres: letras sem acento, números e _, começando por letra. Ex.: pagamentos_prod"}
+		return &fieldError{Field: "name", Code: "name_invalid",
+			Msg: "use 2 to 63 characters: unaccented letters, digits and _, starting with a letter (e.g. payments_prod)"}
 	}
 	t := model.DBType(in.Type)
 	if !t.Valid() {
-		return &fieldError{"type", fmt.Sprintf("Tipo de banco desconhecido: %q", in.Type)}
+		return &fieldError{Field: "type", Code: "type_invalid", Msg: fmt.Sprintf("unknown database type %q", in.Type),
+			Params: map[string]string{"type": in.Type}}
 	}
 	if in.DSN = strings.TrimSpace(in.DSN); in.DSN != "" {
 		c.DSN = in.DSN
 	}
 	if c.DSN == "" {
-		return &fieldError{"dsn", "Informe a connection string. Ex.: " + t.Info().DSNExample}
+		return &fieldError{Field: "dsn", Code: "dsn_required", Msg: "enter the connection string, e.g. " + t.Info().DSNExample,
+			Params: map[string]string{"example": t.Info().DSNExample}}
 	}
 	if in.MaxRows <= 0 {
 		in.MaxRows = 100
@@ -206,16 +221,18 @@ func (s *Server) apply(in connInput, c *model.Connection) error {
 		in.TimeoutSec = 30
 	}
 	if in.MaxRows > s.meta.MaxRowsCap {
-		return &fieldError{"max_rows", fmt.Sprintf("O teto deste servidor é %d linhas por consulta.", s.meta.MaxRowsCap)}
+		return &fieldError{Field: "max_rows", Code: "max_rows_cap", Msg: fmt.Sprintf("this server allows at most %d rows per query", s.meta.MaxRowsCap),
+			Params: map[string]string{"cap": strconv.Itoa(s.meta.MaxRowsCap)}}
 	}
 	if in.TimeoutSec > 600 {
-		return &fieldError{"timeout_sec", "O timeout máximo é 600 segundos."}
+		return &fieldError{Field: "timeout_sec", Code: "timeout_max", Msg: "the maximum timeout is 600 seconds"}
 	}
 	c.Name, c.Type, c.Description, c.Database = in.Name, t, strings.TrimSpace(in.Description), strings.TrimSpace(in.Database)
 	c.Enabled, c.AllowInsert, c.AllowUpdate, c.AllowDelete, c.AllowDDL = in.Enabled, in.AllowInsert, in.AllowUpdate, in.AllowDelete, in.AllowDDL
 	c.MaxRows, c.TimeoutSec = in.MaxRows, in.TimeoutSec
 	if err := s.reg.Validate(*c); err != nil {
-		return &fieldError{"dsn", fmt.Sprintf("Connection string inválida para %s: %v", t.Info().Label, err)}
+		return &fieldError{Field: "dsn", Code: "dsn_invalid", Msg: fmt.Sprintf("invalid connection string for %s: %v", t.Info().Label, err),
+			Params: map[string]string{"type": t.Info().Label, "detail": err.Error()}}
 	}
 	return nil
 }
@@ -324,8 +341,9 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 
 // conflictErr points a duplicate-name error at the name field.
 func conflictErr(err error) error {
-	if errors.Is(err, store.ErrDuplicateName) {
-		return &fieldError{"name", err.Error()}
+	var dup *store.DuplicateNameError
+	if errors.As(err, &dup) {
+		return &fieldError{Field: "name", Code: "name_taken", Msg: err.Error(), Params: map[string]string{"name": dup.Name}}
 	}
 	return err
 }
@@ -383,7 +401,7 @@ func (s *Server) testConnection(w http.ResponseWriter, r *http.Request) {
 		c.DSN = old.DSN
 	}
 	if !c.Type.Valid() {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("tipo inválido %q", in.Type))
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("unknown database type %q", in.Type))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)

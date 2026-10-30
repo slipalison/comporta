@@ -4,18 +4,19 @@ services:
       context: .
       args:
         VERSION: ${COMPORTA_VERSION:-dev}
-    # Para usar a imagem publicada: image: ghcr.io/slipalison/comporta:<versão>
+    # Builds from this folder. To use the published image instead, remove
+    # `build` and set: image: slipalison/comporta:<version>
     image: comporta:dev
     container_name: comporta
     restart: unless-stopped
     env_file: .env
     ports:
-      # Só em localhost: a UI decide o que a IA pode fazer.
+      # Localhost only: the admin UI decides what the AI may do.
       - "127.0.0.1:${COMPORTA_PORT:-7843}:8080"
     volumes:
       - comporta-data:/data
     extra_hosts:
-      # permite alcançar bancos que rodam no host
+      # lets connections reach databases running on the host
       - "host.docker.internal:host-gateway"
     read_only: true
     tmpfs: [/tmp]

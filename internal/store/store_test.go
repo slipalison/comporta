@@ -118,7 +118,8 @@ func TestStore(t *testing.T) {
 	failIf(t, err != nil, "%v", err)
 	dup := conn
 	err = st.CreateConnection(ctx, &dup)
-	failIf(t, !errors.Is(err, ErrDuplicateName), "duplicate: %v", err)
+	var dupErr *DuplicateNameError
+	failIf(t, !errors.As(err, &dupErr) || dupErr.Name != "a", "duplicate: %v", err)
 	conn.AllowDelete = true
 	err = st.UpdateConnection(ctx, &conn)
 	failIf(t, err != nil, "%v", err)

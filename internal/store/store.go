@@ -16,10 +16,7 @@ import (
 	"github.com/slipalison/comporta/internal/model"
 )
 
-var (
-	ErrNotFound      = errors.New("not found")
-	ErrDuplicateName = errors.New("escolha outro nome")
-)
+var ErrNotFound = errors.New("not found")
 
 type Store struct {
 	db     *sql.DB
@@ -236,9 +233,16 @@ func (s *Store) DeleteConnection(ctx context.Context, id int64) error {
 	return nil
 }
 
+// DuplicateNameError is returned when a connection name is already taken.
+type DuplicateNameError struct{ Name string }
+
+func (e *DuplicateNameError) Error() string {
+	return fmt.Sprintf("a connection named %q already exists", e.Name)
+}
+
 func uniqueErr(err error, name string) error {
 	if strings.Contains(err.Error(), "UNIQUE") {
-		return fmt.Errorf("já existe uma conexão chamada %q: %w", name, ErrDuplicateName)
+		return &DuplicateNameError{Name: name}
 	}
 	return err
 }

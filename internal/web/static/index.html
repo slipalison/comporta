@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-US">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -32,119 +32,123 @@
   <symbol id="i-gate" viewBox="0 0 32 32"><path d="M8 7v18M24 7v18" stroke-width="3"/><path d="M8 12h16M8 17h16" stroke-width="2.5"/><path d="M8 22c2.7-1.6 5.3 1.6 8 0s5.3-1.6 8 0" stroke-width="2"/></symbol>
 </svg>
 
-<a class="skip" href="#main">Pular para o conteúdo</a>
+<a class="skip" href="#main" data-i18n="app.skip">Skip to content</a>
 
 <header class="topbar">
   <div class="wrap topbar-in">
-    <a class="brand" href="#/conexoes">
+    <a class="brand" href="#/connections">
       <span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-gate"/></svg></span>
       <span class="brand-name">Comporta</span>
       <span class="brand-version" id="version"></span>
     </a>
-    <nav class="mainnav" aria-label="Principal">
-      <a href="#/conexoes" data-route="conexoes">Conexões</a>
-      <a href="#/auditoria" data-route="auditoria">Auditoria</a>
-      <a href="#/clientes" data-route="clientes">Conectar clientes</a>
+    <nav class="mainnav" data-i18n-attr="aria-label:nav.label" aria-label="Main">
+      <a href="#/connections" data-route="connections" data-i18n="nav.connections">Connections</a>
+      <a href="#/audit" data-route="audit" data-i18n="nav.audit">Audit log</a>
+      <a href="#/clients" data-route="clients" data-i18n="nav.clients">Connect clients</a>
     </nav>
     <div class="pulse" id="pulse" hidden>
-      <span class="pulse-label"><span class="sr-only">Chamadas MCP nas últimas </span>24 h</span>
-      <a class="pulse-item" id="pulse-total" href="#/auditoria"><b>0</b> chamadas</a>
-      <a class="pulse-item is-denied" id="pulse-denied" href="#/auditoria?status=denied"><b>0</b> negadas</a>
-      <a class="pulse-item is-error" id="pulse-error" href="#/auditoria?status=error"><b>0</b> erros</a>
+      <span class="pulse-label"><span class="sr-only" data-i18n="pulse.prefix">MCP calls in the last </span>24 h</span>
+      <a class="pulse-item" id="pulse-total" href="#/audit"><b>0</b> calls</a>
+      <a class="pulse-item is-denied" id="pulse-denied" href="#/audit?status=denied"><b>0</b> denied</a>
+      <a class="pulse-item is-error" id="pulse-error" href="#/audit?status=error"><b>0</b> errors</a>
+    </div>
+    <div class="lang">
+      <label class="sr-only" for="lang" data-i18n="lang.label">Language</label>
+      <select id="lang"></select>
     </div>
   </div>
 </header>
 
 <main id="main" class="wrap" tabindex="-1">
 
-  <!-- ===================================================== Conexões -->
-  <section id="view-conexoes" class="view" aria-labelledby="h-conexoes">
+  <!-- ===================================================== Connections -->
+  <section id="view-connections" class="view" aria-labelledby="h-connections">
     <div class="page-head">
       <div>
-        <h1 id="h-conexoes" tabindex="-1">Conexões</h1>
-        <p class="lede">Cada conexão é um banco que a IA enxerga. Consultas de leitura estão sempre liberadas; escrever exige a permissão ligada aqui.</p>
+        <h1 id="h-connections" tabindex="-1" data-i18n="conn.title">Connections</h1>
+        <p class="lede" data-i18n="conn.lede"></p>
       </div>
       <button type="button" class="btn btn-primary" id="new-conn" aria-keyshortcuts="n">
-        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Nova conexão
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span data-i18n="conn.new">New connection</span>
       </button>
     </div>
 
     <output id="conn-loading" class="loading">
-      <span class="spinner" aria-hidden="true"></span> Carregando conexões…
+      <span class="spinner" aria-hidden="true"></span> <span data-i18n="conn.loading">Loading connections…</span>
     </output>
 
     <div id="conn-empty" class="onboard" hidden>
-      <h2>Comece por aqui</h2>
+      <h2 data-i18n="onboard.title">Get started</h2>
       <ol class="steps">
-        <li><b>Cadastre uma conexão.</b> Informe a connection string e o que a IA pode fazer nela. Por padrão, só leitura.</li>
-        <li><b>Conecte o cliente MCP.</b> Claude Code, VS Code, Copilot ou Gemini, com o token de cada um. <a href="#/clientes">Ver instruções</a></li>
-        <li><b>Acompanhe na auditoria.</b> Toda chamada fica registrada: quem, onde, o quê e o resultado.</li>
+        <li data-i18n-html="onboard.step1"></li>
+        <li data-i18n-html="onboard.step2"></li>
+        <li data-i18n-html="onboard.step3"></li>
       </ol>
       <button type="button" class="btn btn-primary" data-act="new">
-        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Cadastrar a primeira conexão
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span data-i18n="onboard.cta">Add your first connection</span>
       </button>
     </div>
 
-    <ul id="conn-list" class="conn-list" aria-label="Conexões cadastradas"></ul>
+    <ul id="conn-list" class="conn-list" data-i18n-attr="aria-label:conn.listLabel" aria-label="Saved connections"></ul>
   </section>
 
-  <!-- ===================================================== Auditoria -->
-  <section id="view-auditoria" class="view" aria-labelledby="h-auditoria" hidden>
+  <!-- ===================================================== Audit -->
+  <section id="view-audit" class="view" aria-labelledby="h-audit" hidden>
     <div class="page-head">
       <div>
-        <h1 id="h-auditoria" tabindex="-1">Auditoria</h1>
-        <p class="lede">Toda chamada das IAs e toda mudança feita nesta tela. Clique numa linha para ver o comando completo.</p>
+        <h1 id="h-audit" tabindex="-1" data-i18n="audit.title">Audit log</h1>
+        <p class="lede" data-i18n="audit.lede"></p>
       </div>
       <div class="head-actions">
         <label class="switch-label">
           <input type="checkbox" class="switch" id="live" checked>
-          <span>Atualizar sozinho</span>
+          <span data-i18n="audit.live">Auto-refresh</span>
         </label>
         <a class="btn" id="export" href="api/audit/export" download>
-          <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Exportar CSV
+          <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="audit.export">Export CSV</span>
         </a>
       </div>
     </div>
 
-    <form class="filters" id="filters" role="search" aria-label="Filtrar auditoria">
+    <form class="filters" id="filters" role="search" data-i18n-attr="aria-label:audit.filtersLabel" aria-label="Filter the audit log">
       <div class="field field-search">
-        <label for="f-q">Buscar no comando, parâmetros ou mensagem</label>
+        <label for="f-q" data-i18n="audit.search">Search</label>
         <div class="input-icon">
           <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-          <input type="search" id="f-q" name="q" placeholder="ex.: pedidos, DROP, timeout" aria-keyshortcuts="/" autocomplete="off">
+          <input type="search" id="f-q" name="q" data-i18n-attr="placeholder:audit.searchPlaceholder" aria-keyshortcuts="/" autocomplete="off">
         </div>
       </div>
       <div class="field">
-        <label for="f-status">Resultado</label>
+        <label for="f-status" data-i18n="audit.result">Result</label>
         <select id="f-status" name="status">
-          <option value="">Todos</option><option value="ok">OK</option><option value="denied">Negado</option><option value="error">Erro</option>
+          <option value="" data-i18n="audit.all">All</option><option value="ok" data-i18n="status.ok">OK</option><option value="denied" data-i18n="status.denied">Denied</option><option value="error" data-i18n="status.error">Error</option>
         </select>
       </div>
       <div class="field">
-        <label for="f-connection">Conexão</label>
-        <select id="f-connection" name="connection"><option value="">Todas</option></select>
+        <label for="f-connection" data-i18n="audit.connection">Connection</label>
+        <select id="f-connection" name="connection"><option value="" data-i18n="audit.all">All</option></select>
       </div>
       <div class="field">
-        <label for="f-tool">Ferramenta</label>
+        <label for="f-tool" data-i18n="audit.tool">Tool</label>
         <select id="f-tool" name="tool">
-          <option value="">Todas</option>
+          <option value="" data-i18n="audit.all">All</option>
           <optgroup label="SQL"><option>sql_query</option><option>sql_execute</option></optgroup>
           <optgroup label="MongoDB"><option>mongo_find</option><option>mongo_aggregate</option><option>mongo_count</option><option>mongo_insert</option><option>mongo_update</option><option>mongo_delete</option></optgroup>
-          <optgroup label="Outras"><option>describe_schema</option><option value="admin">Mudanças nesta tela</option></optgroup>
+          <optgroup data-i18n-attr="label:audit.otherTools" label="Other"><option>describe_schema</option><option value="admin" data-i18n="audit.adminTool">Changes on this screen</option></optgroup>
         </select>
       </div>
       <div class="field">
-        <label for="f-operation">Operação</label>
+        <label for="f-operation" data-i18n="audit.operation">Operation</label>
         <select id="f-operation" name="operation">
-          <option value="">Todas</option><option value="select">select</option><option value="insert">insert</option><option value="update">update</option><option value="delete">delete</option><option value="ddl">ddl</option><option value="connection.">mudança de conexão</option>
+          <option value="" data-i18n="audit.all">All</option><option value="select">select</option><option value="insert">insert</option><option value="update">update</option><option value="delete">delete</option><option value="ddl">ddl</option><option value="connection." data-i18n="audit.connChange">connection change</option>
         </select>
       </div>
       <div class="field">
-        <label for="f-since">Desde</label>
+        <label for="f-since" data-i18n="audit.since">Since</label>
         <input type="datetime-local" id="f-since" name="since">
       </div>
       <div class="field field-reset">
-        <button type="reset" class="btn btn-ghost" id="f-reset" hidden>Limpar filtros</button>
+        <button type="reset" class="btn btn-ghost" id="f-reset" hidden data-i18n="audit.clear">Clear filters</button>
       </div>
     </form>
 
@@ -152,50 +156,50 @@
 
     <div class="table-wrap">
       <table class="audit" id="audit">
-        <caption class="sr-only">Registros de auditoria, do mais recente para o mais antigo</caption>
+        <caption class="sr-only" data-i18n="audit.caption">Audit records, newest first</caption>
         <thead>
           <tr>
-            <th scope="col">Quando</th>
-            <th scope="col">Resultado</th>
-            <th scope="col">Conexão</th>
-            <th scope="col">Ferramenta</th>
-            <th scope="col">Comando</th>
-            <th scope="col" class="num">Linhas</th>
-            <th scope="col" class="num">Duração</th>
-            <th scope="col">Cliente</th>
+            <th scope="col" data-i18n="audit.when">When</th>
+            <th scope="col" data-i18n="audit.result">Result</th>
+            <th scope="col" data-i18n="audit.connection">Connection</th>
+            <th scope="col" data-i18n="audit.tool">Tool</th>
+            <th scope="col" data-i18n="audit.command">Command</th>
+            <th scope="col" class="num" data-i18n="audit.rows">Rows</th>
+            <th scope="col" class="num" data-i18n="audit.duration">Duration</th>
+            <th scope="col" data-i18n="audit.client">Client</th>
           </tr>
         </thead>
         <tbody id="audit-rows"></tbody>
       </table>
     </div>
     <div class="empty-state" id="audit-empty" hidden>
-      <p><b>Nenhum registro com esses filtros.</b></p>
-      <p class="muted">Tente outro período ou limpe os filtros.</p>
+      <p><b data-i18n="audit.empty">No records match these filters.</b></p>
+      <p class="muted" data-i18n="audit.emptyHint"></p>
     </div>
     <div class="more" id="audit-more" hidden>
-      <button type="button" class="btn" id="load-more">Carregar mais 100</button>
+      <button type="button" class="btn" id="load-more" data-i18n="audit.more">Load 100 more</button>
     </div>
     <p class="hint" id="retention"></p>
   </section>
 
-  <!-- ===================================================== Clientes -->
-  <section id="view-clientes" class="view" aria-labelledby="h-clientes" hidden>
+  <!-- ===================================================== Clients -->
+  <section id="view-clients" class="view" aria-labelledby="h-clients" hidden>
     <div class="page-head">
       <div>
-        <h1 id="h-clientes" tabindex="-1">Conectar clientes MCP</h1>
-        <p class="lede">Cada cliente usa um token próprio, definido em <code>COMPORTA_MCP_TOKENS</code>. O rótulo do token identifica o cliente na auditoria.</p>
+        <h1 id="h-clients" tabindex="-1" data-i18n="clients.title">Connect MCP clients</h1>
+        <p class="lede" data-i18n-html="clients.lede"></p>
       </div>
     </div>
 
     <div class="card">
-      <h2 class="card-title">Endereço do servidor</h2>
+      <h2 class="card-title" data-i18n="clients.endpoint">Server address</h2>
       <div class="copy-line">
         <code id="endpoint"></code>
-        <button type="button" class="btn btn-sm" data-copy="#endpoint" aria-label="Copiar endereço do servidor">
-          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        <button type="button" class="btn btn-sm" data-copy="#endpoint" data-i18n-attr="aria-label:clients.copyEndpoint">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span data-i18n="common.copy">Copy</span>
         </button>
       </div>
-      <p class="hint">Transporte Streamable HTTP, com o cabeçalho <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <p class="hint" data-i18n-html="clients.transport"></p>
       <div id="client-labels" class="token-labels"></div>
     </div>
 
@@ -203,41 +207,41 @@
       <div class="card">
         <h2 class="card-title">Claude Code</h2>
         <pre class="code" id="snip-claude"></pre>
-        <button type="button" class="btn btn-sm" data-copy="#snip-claude" aria-label="Copiar comando do Claude Code">
-          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        <button type="button" class="btn btn-sm" data-copy="#snip-claude" data-i18n-attr="aria-label:clients.copyClaude">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span data-i18n="common.copy">Copy</span>
         </button>
       </div>
       <div class="card">
-        <h2 class="card-title">VS Code e GitHub Copilot <span class="muted">(mcp.json)</span></h2>
+        <h2 class="card-title"><span data-i18n="clients.vscode">VS Code and GitHub Copilot</span> <span class="muted">(mcp.json)</span></h2>
         <pre class="code" id="snip-vscode"></pre>
-        <button type="button" class="btn btn-sm" data-copy="#snip-vscode" aria-label="Copiar configuração do VS Code">
-          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        <button type="button" class="btn btn-sm" data-copy="#snip-vscode" data-i18n-attr="aria-label:clients.copyVscode">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span data-i18n="common.copy">Copy</span>
         </button>
       </div>
       <div class="card">
-        <h2 class="card-title">Copilot CLI, Gemini CLI e outros <span class="muted">(mcpServers)</span></h2>
+        <h2 class="card-title"><span data-i18n="clients.generic">Copilot CLI, Gemini CLI and others</span> <span class="muted">(mcpServers)</span></h2>
         <pre class="code" id="snip-generic"></pre>
-        <button type="button" class="btn btn-sm" data-copy="#snip-generic" aria-label="Copiar configuração genérica">
-          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copiar
+        <button type="button" class="btn btn-sm" data-copy="#snip-generic" data-i18n-attr="aria-label:clients.copyGeneric">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span data-i18n="common.copy">Copy</span>
         </button>
       </div>
     </div>
 
     <div class="card prose">
-      <h2 class="card-title">O que a IA enxerga</h2>
-      <p>As ferramentas são montadas a partir das conexões ativas. <code>sql_query</code> lista só conexões SQL; <code>sql_execute</code> só aparece quando alguma conexão SQL tem escrita liberada; as ferramentas <code>mongo_*</code> listam só conexões MongoDB.</p>
-      <p>Cada conexão vai com o tipo, o dialeto, o estilo de parâmetro e a <b>descrição</b>. É a descrição que faz a IA escolher a conexão certa: diga o que há naquele banco.</p>
-      <p>Clientes que guardam a lista de ferramentas podem precisar reconectar depois de uma mudança aqui. As permissões, porém, são conferidas a cada chamada.</p>
+      <h2 class="card-title" data-i18n="clients.seesTitle">What the AI sees</h2>
+      <p data-i18n-html="clients.sees1"></p>
+      <p data-i18n-html="clients.sees2"></p>
+      <p data-i18n-html="clients.sees3"></p>
     </div>
   </section>
 </main>
 
-<!-- ===================================================== Formulário -->
+<!-- ===================================================== Form -->
 <dialog id="dlg-conn" class="dialog dialog-form" aria-labelledby="dlg-conn-title">
   <form id="conn-form" novalidate>
     <header class="dialog-head">
-      <h2 id="dlg-conn-title">Nova conexão</h2>
-      <button type="button" class="btn btn-icon" data-close aria-label="Fechar">
+      <h2 id="dlg-conn-title">New connection</h2>
+      <button type="button" class="btn btn-icon" data-close data-i18n-attr="aria-label:common.close" aria-label="Close">
         <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
       </button>
     </header>
@@ -246,116 +250,116 @@
       <div class="form-error" id="form-error" role="alert" hidden></div>
 
       <fieldset>
-        <legend>Identificação</legend>
+        <legend data-i18n="form.identity">Identity</legend>
         <div class="field">
-          <label for="c-type">Tipo de banco</label>
+          <label for="c-type" data-i18n="form.type">Database type</label>
           <select id="c-type" name="type"></select>
         </div>
         <div class="field">
-          <label for="c-name">Nome</label>
-          <p class="hint" id="c-name-hint">É como a IA chama a conexão. Letras, números e _ — espaços e hífens viram _.</p>
-          <input type="text" id="c-name" name="name" required autocomplete="off" spellcheck="false" aria-describedby="c-name-hint c-name-err" placeholder="ex.: pagamentos_prod">
+          <label for="c-name" data-i18n="form.name">Name</label>
+          <p class="hint" id="c-name-hint" data-i18n="form.nameHint"></p>
+          <input type="text" id="c-name" name="name" required autocomplete="off" spellcheck="false" aria-describedby="c-name-hint c-name-err" data-i18n-attr="placeholder:form.namePlaceholder">
           <p class="field-error" id="c-name-err" hidden></p>
         </div>
         <div class="field">
-          <label for="c-desc">Descrição para a IA <span class="optional">(opcional, recomendada)</span></label>
-          <p class="hint" id="c-desc-hint">O que há neste banco. A IA usa este texto para escolher a conexão certa.</p>
-          <textarea id="c-desc" name="description" rows="2" aria-describedby="c-desc-hint" placeholder="ex.: Pagamentos de produção: transações, estornos e conciliação."></textarea>
+          <label for="c-desc"><span data-i18n="form.description">Description for the AI</span> <span class="optional" data-i18n="form.optionalRecommended">(optional, recommended)</span></label>
+          <p class="hint" id="c-desc-hint" data-i18n="form.descriptionHint"></p>
+          <textarea id="c-desc" name="description" rows="2" aria-describedby="c-desc-hint" data-i18n-attr="placeholder:form.descriptionPlaceholder"></textarea>
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Acesso</legend>
+        <legend data-i18n="form.access">Access</legend>
         <div class="field">
-          <label for="c-dsn">Connection string</label>
+          <label for="c-dsn" data-i18n="form.dsn">Connection string</label>
           <p class="hint" id="c-dsn-hint"></p>
           <div class="input-group">
             <input type="password" id="c-dsn" name="dsn" autocomplete="off" spellcheck="false" aria-describedby="c-dsn-hint c-dsn-err">
             <button type="button" class="btn" id="toggle-dsn" aria-pressed="false" aria-controls="c-dsn">
-              <svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>Mostrar</span>
+              <svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>Show</span>
             </button>
           </div>
           <p class="field-error" id="c-dsn-err" hidden></p>
-          <p class="hint">Use um usuário do banco só com os grants necessários: ele é a última barreira.</p>
+          <p class="hint" data-i18n="form.dsnUserHint"></p>
         </div>
         <div class="field" id="db-field" hidden>
-          <label for="c-db">Database padrão <span class="optional">(opcional se já estiver na URI)</span></label>
+          <label for="c-db"><span data-i18n="form.database">Default database</span> <span class="optional" data-i18n="form.databaseOptional">(optional if it is in the URI)</span></label>
           <input type="text" id="c-db" name="database" autocomplete="off" spellcheck="false">
         </div>
         <div class="test-row">
           <button type="button" class="btn" id="test-btn">
-            <svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Testar conexão
+            <svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg><span data-i18n="form.test">Test connection</span>
           </button>
           <output class="test-result" id="test-result"></output>
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>O que a IA pode fazer</legend>
+        <legend data-i18n="form.perms">What the AI can do</legend>
         <ul class="perm-list">
           <li class="perm is-locked">
-            <span class="perm-text"><b>Ler dados</b> <code>SELECT</code><small>Sempre liberado, em transação que é desfeita.</small></span>
-            <span class="perm-fixed"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Sempre</span>
+            <span class="perm-text"><b data-i18n="perm.read">Read data</b> <code>SELECT</code><small data-i18n="perm.readHint"></small></span>
+            <span class="perm-fixed"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span data-i18n="perm.always">Always</span></span>
           </li>
           <li class="perm">
-            <label class="perm-text" for="c-insert"><b>Inserir</b> <code>INSERT</code><small>Criar linhas ou documentos.</small></label>
+            <label class="perm-text" for="c-insert"><b data-i18n="perm.insert">Insert</b> <code>INSERT</code><small data-i18n="perm.insertHint"></small></label>
             <input type="checkbox" class="switch" id="c-insert" name="allow_insert">
           </li>
           <li class="perm">
-            <label class="perm-text" for="c-update"><b>Alterar</b> <code>UPDATE</code><small>Mudar linhas ou documentos que já existem.</small></label>
+            <label class="perm-text" for="c-update"><b data-i18n="perm.update">Update</b> <code>UPDATE</code><small data-i18n="perm.updateHint"></small></label>
             <input type="checkbox" class="switch" id="c-update" name="allow_update">
           </li>
           <li class="perm is-risky">
-            <label class="perm-text" for="c-delete"><b>Apagar</b> <code>DELETE</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>Remove dados; não tem desfazer.</small></label>
+            <label class="perm-text" for="c-delete"><b data-i18n="perm.delete">Delete</b> <code>DELETE</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span data-i18n="perm.deleteHint"></span></small></label>
             <input type="checkbox" class="switch switch-risky" id="c-delete" name="allow_delete">
           </li>
           <li class="perm is-risky">
-            <label class="perm-text" for="c-ddl"><b>Estrutura e administração</b> <code>DDL</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>CREATE, DROP, ALTER, EXEC, GRANT, SET… Poder total no banco.</small></label>
+            <label class="perm-text" for="c-ddl"><b data-i18n="perm.ddl">Schema and admin</b> <code>DDL</code><small><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span data-i18n="perm.ddlHint"></span></small></label>
             <input type="checkbox" class="switch switch-risky" id="c-ddl" name="allow_ddl">
           </li>
         </ul>
       </fieldset>
 
       <fieldset>
-        <legend>Limites</legend>
+        <legend data-i18n="form.limits">Limits</legend>
         <div class="field-row">
           <div class="field">
-            <label for="c-rows">Linhas por consulta</label>
+            <label for="c-rows" data-i18n="form.rows">Rows per query</label>
             <input type="number" id="c-rows" name="max_rows" min="1" inputmode="numeric" aria-describedby="c-rows-hint c-rows-err">
             <p class="hint" id="c-rows-hint"></p>
             <p class="field-error" id="c-rows-err" hidden></p>
           </div>
           <div class="field">
-            <label for="c-timeout">Timeout, em segundos</label>
+            <label for="c-timeout" data-i18n="form.timeout">Timeout, in seconds</label>
             <input type="number" id="c-timeout" name="timeout_sec" min="1" max="600" inputmode="numeric" aria-describedby="c-timeout-hint c-timeout-err">
-            <p class="hint" id="c-timeout-hint">Até 600.</p>
+            <p class="hint" id="c-timeout-hint" data-i18n="form.timeoutHint"></p>
             <p class="field-error" id="c-timeout-err" hidden></p>
           </div>
         </div>
         <label class="switch-label switch-block">
           <input type="checkbox" class="switch" id="c-enabled" name="enabled" checked>
-          <span><b>Conexão ativa</b><small>Desligada, a IA deixa de enxergá-la na hora.</small></span>
+          <span><b data-i18n="form.enabled">Active connection</b><small data-i18n="form.enabledHint"></small></span>
         </label>
       </fieldset>
     </div>
 
     <footer class="dialog-foot">
-      <button type="button" class="btn" data-close>Cancelar</button>
-      <button type="submit" class="btn btn-primary" id="save-btn">Salvar conexão</button>
+      <button type="button" class="btn" data-close data-i18n="common.cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="save-btn">Save</button>
     </footer>
   </form>
 </dialog>
 
-<!-- ===================================================== Confirmação -->
+<!-- ===================================================== Confirm -->
 <dialog id="dlg-confirm" class="dialog dialog-confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
   <form method="dialog">
     <div class="dialog-body">
       <div class="confirm-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert"/></svg></div>
-      <h2 id="confirm-title">Confirmar</h2>
+      <h2 id="confirm-title" data-i18n="confirm.default">Confirm</h2>
       <div id="confirm-body"></div>
     </div>
     <footer class="dialog-foot">
-      <button type="submit" class="btn" value="cancel" id="confirm-cancel">Cancelar</button>
+      <button type="submit" class="btn" value="cancel" id="confirm-cancel" data-i18n="common.cancel">Cancel</button>
       <button type="submit" class="btn btn-danger" value="ok" id="confirm-ok"></button>
     </footer>
   </form>
