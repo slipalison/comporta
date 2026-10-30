@@ -2,8 +2,11 @@ package db
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"math"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -66,12 +69,27 @@ func TestJSONValue(t *testing.T) {
 		want any
 	}{
 		{nil, nil}, {int64(1), int64(1)}, {true, true}, {1.5, 1.5}, {float32(2), 2.0},
-		{math.Inf(1), "+Inf"}, {now, "2026-01-02T03:04:05Z"}, {[]byte("oi"), "oi"}, {uint8(7), "7"},
+		{math.Inf(1), "+Inf"}, {now, "2026-01-02T03:04:05Z"}, {[]byte("oi"), "oi"}, {uint8(7), uint8(7)}, {(*string)(nil), nil}, {ptr("x"), "x"},
 	}
 	for _, tc := range cases {
 		if got := jsonValue(tc.in, ""); got != tc.want {
 			t.Errorf("jsonValue(%#v) = %#v, want %#v", tc.in, got, tc.want)
 		}
+	}
+	if got := jsonValue("10.50", "NUMBER"); got != json.Number("10.50") {
+		t.Errorf("Oracle NUMBER: %#v", got)
+	}
+	if got := jsonValue(".5", "NUMBER"); got != ".5" {
+		t.Errorf("text that is not a JSON number stays text: %#v", got)
+	}
+	if got := jsonValue("abc", "NUMBER"); got != "abc" {
+		t.Errorf("non-numeric text in a NUMBER column: %#v", got)
+	}
+	if got := jsonValue([]string{"a", "b"}, ""); string(got.(json.RawMessage)) != `["a","b"]` {
+		t.Errorf("array cell: %#v", got)
+	}
+	if got := jsonValue(struct{ A int }{1}, ""); string(got.(json.RawMessage)) != `{"A":1}` {
+		t.Errorf("struct cell: %#v", got)
 	}
 	long := strings.Repeat("é", MaxCellChars)
 	got := truncate(long)
@@ -108,17 +126,49 @@ func failIf(t *testing.T, bad bool, format string, args ...any) {
 // The schema queries of every dialect take the schema filter as a bound
 // parameter, never as text.
 func TestSchemaQueries(t *testing.T) {
-	for _, dbType := range []model.DBType{model.Postgres, model.SQLServer, model.MySQL, model.SQLite} {
+	for _, dbType := range []model.DBType{model.Postgres, model.SQLServer, model.MySQL, model.SQLite, model.Oracle, model.ClickHouse} {
 		for _, schema := range []string{"", "vendas"} {
 			q, args, err := tablesQuery(dbType, schema)
 			failIf(t, err != nil || strings.Contains(q, "vendas"), "%s tables: %v %q", dbType, err, q)
-			failIf(t, schema != "" && dbType != model.SQLite && len(args) != 1, "%s tables args: %v", dbType, args)
+			failIf(t, schema != "" && dbType != model.SQLite && !slices.Contains(args, any(schema)), "%s tables args: %v", dbType, args)
 			q, args, err = columnsQuery(dbType, schema, "pedidos")
 			failIf(t, err != nil || strings.Contains(q, "pedidos") || len(args) == 0, "%s columns: %v %q", dbType, err, q)
 		}
 	}
-	_, _, err := tablesQuery(model.MongoDB, "")
+	_, _, err := tablesQuery(model.Redis, "")
+	failIf(t, err == nil, "Redis has no SQL schema query")
+	_, _, err = tablesQuery(model.MongoDB, "")
 	failIf(t, err == nil, "MongoDB has no SQL schema query")
 	_, _, err = columnsQuery(model.MongoDB, "", "x")
 	failIf(t, err == nil, "MongoDB has no SQL schema query")
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// ClickHouse has no transactions to roll back, so dry_run is refused before
+// anything reaches the server.
+func TestClickHouseNoDryRun(t *testing.T) {
+	_, err := RunSQL(context.Background(), nil, model.ClickHouse, SQLRequest{Query: "INSERT INTO t VALUES (1)", Write: true, DryRun: true})
+	failIf(t, !errors.Is(err, ErrNoDryRun), "got %v", err)
+	failIf(t, model.ClickHouse.Transactional() || !model.Oracle.Transactional() || model.Redis.Transactional(), "Transactional")
+}
+
+func TestValidateNewTypes(t *testing.T) {
+	r := NewRegistry("/data/comporta.db")
+	for _, c := range []model.Connection{
+		{Type: model.Oracle, DSN: "oracle://u:p@db:1521/FREEPDB1"},
+		{Type: model.ClickHouse, DSN: "clickhouse://u:p@ch:9000/shop"},
+		{Type: model.Redis, DSN: "redis://cache:6379/0"},
+	} {
+		failIf(t, r.Validate(c) != nil, "%s: %v", c.Type, r.Validate(c))
+	}
+	for _, c := range []model.Connection{
+		{Type: model.ClickHouse, DSN: "clickhouse://u:p@ch:9000/shop?dial_timeout=abc"},
+		{Type: model.Redis, DSN: "http://cache"},
+	} {
+		failIf(t, r.Validate(c) == nil, "%s %q must be invalid", c.Type, c.DSN)
+	}
+	_, err := r.Redis(model.Connection{Type: model.Postgres})
+	failIf(t, err == nil, "Postgres is not Redis")
+	failIf(t, MaskDSN("oracle://app:s3cr3t@db:1521/x") != "oracle://app:****@db:1521/x", "oracle DSN mask")
 }

@@ -13,6 +13,8 @@ func TestAnalyzeSQL(t *testing.T) {
 		ms    = model.SQLServer
 		my    = model.MySQL
 		lite  = model.SQLite
+		ora   = model.Oracle
+		ch    = model.ClickHouse
 		read  = ""
 		ins   = "insert"
 		upd   = "update"
@@ -79,6 +81,35 @@ func TestAnalyzeSQL(t *testing.T) {
 		{lite, "SELECT t.attach FROM t", read},
 		// SQLite does not nest comments: the DELETE below is real code
 		{lite, "SELECT /* /* */ 1 DELETE FROM t", del},
+
+		{ora, "SELECT * FROM orders FETCH FIRST 10 ROWS ONLY", read},
+		{ora, "SELECT q'[it's DELETE]' FROM dual", read},
+		{ora, "SELECT Q'{ DROP TABLE t }' FROM dual", read},
+		{ora, "SELECT nq'<x ' y>' FROM dual", read},
+		{ora, "SELECT q'!a'b!' FROM dual WHERE id = :1", read},
+		{ora, "SELECT * FROM t WHERE q = 'x'", read},
+		{ora, "SELECT * FROM t FOR UPDATE", upd},
+		{ora, "INSERT INTO t (a) VALUES (:1)", ins},
+		{ora, "INSERT ALL INTO t VALUES (1) INTO u VALUES (2) SELECT * FROM dual", ins},
+		{ora, "MERGE INTO t USING s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET a = 1", "insert+update+delete"},
+		{ora, "BEGIN NULL END", ddl},
+		{ora, "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY'", ddl},
+		{ora, "EXECUTE IMMEDIATE 'DROP TABLE t'", ddl},
+		{ora, "SELECT * FROM t; ", read},
+
+		{ch, "SELECT count() FROM events WHERE date = today()", read},
+		{ch, "SELECT 'it\\'s DELETE' # DROP TABLE t", read},
+		{ch, "SELECT 1 #! DELETE", read},
+		{ch, "SELECT `a\\`DELETE` FROM t", read},
+		{ch, "SELECT $h$ DELETE $h$", read},
+		{ch, "SELECT 1 /* a /* DROP */ b */", read},
+		{ch, "INSERT INTO events (id) VALUES (?)", ins},
+		{ch, "ALTER TABLE events DELETE WHERE id = 1", "delete+ddl"},
+		{ch, "ALTER TABLE events UPDATE x = 1 WHERE id = 1", "update+ddl"},
+		{ch, "OPTIMIZE TABLE events FINAL", ddl},
+		{ch, "SYSTEM DROP DNS CACHE", ddl},
+		{ch, "SELECT * FROM events SETTINGS max_threads = 2", read},
+		{ch, "SELECT * FROM t INTO OUTFILE 'x.csv'", "insert+ddl"},
 	}
 	for _, tc := range cases {
 		a, err := AnalyzeSQL(tc.db, tc.sql)
@@ -113,6 +144,11 @@ func TestAnalyzeSQLRejects(t *testing.T) {
 		{model.SQLite, "ATTACH DATABASE '/data/comporta.db' AS own"},
 		{model.SQLite, "attach '/data/comporta.db' as own"},
 		{model.SQLite, "DETACH own"},
+		{model.Oracle, "SELECT q'[unterminated FROM dual"},
+		{model.Oracle, "SELECT 1 FROM dual; DELETE FROM t"},
+		{model.Oracle, "BEGIN DELETE FROM t; END;"},
+		{model.ClickHouse, "SELECT 'it\\' unterminated"},
+		{model.ClickHouse, "SELECT 1; DROP TABLE t"},
 	}
 	for _, tc := range cases {
 		if _, err := AnalyzeSQL(tc.db, tc.sql); err == nil {

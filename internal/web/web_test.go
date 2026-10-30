@@ -95,7 +95,7 @@ func TestAuthAndHeaders(t *testing.T) {
 	}
 
 	meta := decodeBody[Meta](t, e.do(t, http.MethodGet, "/api/meta", ""))
-	failIf(t, meta.MaxRowsCap != 500 || len(meta.DBTypes) != 5, "meta: %+v", meta)
+	failIf(t, meta.MaxRowsCap != 500 || len(meta.DBTypes) != 8, "meta: %+v", meta)
 }
 
 func TestLoginLimiter(t *testing.T) {
@@ -140,7 +140,7 @@ func TestConnectionLifecycle(t *testing.T) {
 
 	errs := []struct{ body, field, code string }{
 		{`{"name":"1x","type":"sqlite","dsn":"a.db"}`, "name", "name_invalid"},
-		{`{"name":"abc","type":"oracle","dsn":"x"}`, "type", "type_invalid"},
+		{`{"name":"abc","type":"db2","dsn":"x"}`, "type", "type_invalid"},
 		{`{"name":"abc","type":"postgres"}`, "dsn", "dsn_required"},
 		{`{"name":"abc","type":"sqlite","dsn":"a.db","max_rows":501}`, "max_rows", "max_rows_cap"},
 		{`{"name":"abc","type":"sqlite","dsn":"a.db","timeout_sec":601}`, "timeout_sec", "timeout_max"},
@@ -172,7 +172,7 @@ func TestConnectionLifecycle(t *testing.T) {
 	failIf(t, test["ok"] != true, "test saved connection: %v", test)
 	test = decodeBody[map[string]any](t, e.do(t, http.MethodPost, "/api/test", `{"type":"postgres","dsn":"::not a dsn"}`))
 	failIf(t, test["ok"] != false, "test bad dsn: %v", test)
-	if rec := e.do(t, http.MethodPost, "/api/test", `{"type":"oracle","dsn":"x"}`); rec.Code != http.StatusBadRequest {
+	if rec := e.do(t, http.MethodPost, "/api/test", `{"type":"db2","dsn":"x"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("test bad type: %d", rec.Code)
 	}
 

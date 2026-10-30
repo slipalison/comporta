@@ -4,7 +4,7 @@
 
 **Um servidor MCP para todos os seus bancos de dados, em que você decide o que a IA pode fazer em cada um.**
 
-Comporta é a porta que controla a passagem da água num canal. Aqui ela fica entre os seus assistentes de IA (Claude Code, GitHub Copilot, Gemini…) e os seus bancos: PostgreSQL, SQL Server, MySQL/MariaDB, SQLite e MongoDB. A leitura passa sempre; a escrita só passa onde você abrir.
+Comporta é a porta que controla a passagem da água num canal. Aqui ela fica entre os seus assistentes de IA (Claude Code, GitHub Copilot, Gemini…) e os seus bancos: PostgreSQL, SQL Server, MySQL/MariaDB, Oracle, SQLite, ClickHouse, MongoDB e Redis. A leitura passa sempre; a escrita só passa onde você abrir.
 
 ## Começo rápido com Docker
 
@@ -58,7 +58,7 @@ docker compose up -d
 - **Permissões por conexão.** `INSERT`, `UPDATE`, `DELETE` e `DDL/Admin` ligam e desligam em cada banco, e valem na próxima chamada da IA. `SELECT` está sempre liberado.
 - **Auditoria de toda chamada.** Qual cliente, qual conexão, o comando, os parâmetros, o resultado, as linhas e a duração. Filtros, detalhe e exportação em CSV.
 - **Vários bancos ao mesmo tempo**, cada um com o seu pool de conexões.
-- **Imagem pequena e fechada.** Uns 10 MB comprimida: binário Go estático em distroless, sem shell.
+- **Imagem pequena e fechada.** Uns 13 MB comprimida: binário Go estático em distroless, sem shell.
 - **Interface em inglês e português**, acessível (WCAG 2.2 AA) e boa de usar no celular.
 
 ![Conexões: cada banco com o nível de risco e as permissões da IA](docs/img/conexoes.pt.png)
@@ -66,6 +66,21 @@ docker compose up -d
 | Auditoria | Nova conexão, tema escuro | Celular |
 |---|---|---|
 | ![Auditoria com filtros e o detalhe de uma chamada](docs/img/auditoria.pt.png) | ![Formulário de nova conexão no tema escuro](docs/img/nova-conexao-escuro.pt.png) | ![Lista de conexões no celular](docs/img/celular.pt.png) |
+
+## Bancos suportados
+
+| Banco | Connection string | Também funciona com | Observações |
+|---|---|---|---|
+| PostgreSQL | `postgres://user:pass@host:5432/db?sslmode=require` | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, Aurora PostgreSQL, AlloyDB | leituras em transação `READ ONLY` |
+| SQL Server | `sqlserver://user:pass@host:1433?database=db` | Azure SQL | leituras em transação sempre desfeita |
+| MySQL / MariaDB | `mysql://user:pass@host:3306/db` | TiDB, PlanetScale, Aurora MySQL | leituras em transação `READ ONLY` |
+| Oracle Database | `oracle://user:pass@host:1521/service_name` | Oracle Autonomous Database | leituras em transação `SET TRANSACTION READ ONLY`; testado com o Oracle 23ai Free |
+| SQLite | `/data/files/app.db` | | o arquivo precisa estar dentro do container (monte-o) |
+| ClickHouse | `clickhouse://user:pass@host:9000/db` | ClickHouse Cloud | sem transações: leituras rodam com `readonly=1`, e não há `dry_run` |
+| MongoDB | `mongodb://user:pass@host:27017/db?authSource=admin` | MongoDB Atlas | operações estruturadas, Extended JSON |
+| Redis / Valkey | `redis://user:pass@host:6379/0` (`rediss://` com TLS) | Valkey, KeyDB, Dragonfly, ElastiCache, Upstash | um comando por chamada; veja abaixo |
+
+Todos os drivers são Go puro, o que mantém a imagem pequena e sem bibliotecas nativas. É também por isso que alguns bancos ainda não estão aqui: Snowflake e BigQuery trariam SDKs maiores que o resto da imagem, e IBM Db2 e DuckDB exigem bibliotecas C. [Abra uma issue](https://github.com/slipalison/comporta/issues) se precisar de um deles.
 
 ## Conectar clientes de IA
 
@@ -119,6 +134,8 @@ As ferramentas são montadas a partir das conexões **ativas**. O parâmetro `co
 | `sql_execute` | alguma conexão SQL tem escrita liberada; aceita `dry_run` |
 | `mongo_find`, `mongo_aggregate`, `mongo_count` | há conexão MongoDB |
 | `mongo_insert`, `mongo_update`, `mongo_delete` | alguma conexão MongoDB tem aquela operação liberada |
+| `redis_query` | há conexão Redis: um comando de leitura (`GET`, `HGETALL`, `LRANGE`, `SCAN`…) |
+| `redis_execute` | alguma conexão Redis tem escrita liberada |
 
 **Capriche na descrição de cada conexão.** É por ela que a IA escolhe o banco certo.
 
@@ -126,11 +143,13 @@ Clientes que guardam a lista de ferramentas podem precisar reconectar depois de 
 
 ## Como as permissões são garantidas
 
-Três camadas, do gateway até o banco:
+Nos bancos SQL, três camadas, do gateway até o banco:
 
-1. **Um classificador de SQL por dialeto** (`internal/guard`). Ele lê comentários, strings, as aspas `$$` do Postgres, os `[ ]` do T-SQL e as crases do MySQL como cada banco lê. Acha escrita escondida em CTE, `SELECT INTO`, `MERGE`, `EXEC`, `COPY`, `SET`, `OPENQUERY` e afins. Um comando por chamada; o que ele não consegue provar que é leitura conta como DDL/Admin. No SQLite, `ATTACH` e `DETACH` são sempre recusados, porque abririam outros arquivos, inclusive o banco do próprio Comporta.
-2. **Transações de leitura.** Leituras rodam em transação `READ ONLY` (Postgres, MySQL) ou numa transação sempre desfeita (SQL Server, SQLite). Uma função que escreve dentro de um `SELECT` é barrada pelo próprio banco.
+1. **Um classificador de SQL por dialeto** (`internal/guard`). Ele lê comentários, strings, as aspas `$$` do Postgres, os `[ ]` do T-SQL e as crases do MySQL como cada banco lê. As aspas `q'[...]'` do Oracle e os comentários `#` e escapes com barra invertida do ClickHouse são lidos do mesmo jeito. Acha escrita escondida em CTE, `SELECT INTO`, `MERGE`, `EXEC`, `COPY`, `SET`, `OPENQUERY` e afins. Um comando por chamada; o que ele não consegue provar que é leitura conta como DDL/Admin. No SQLite, `ATTACH` e `DETACH` são sempre recusados, porque abririam outros arquivos, inclusive o banco do próprio Comporta.
+2. **Transações de leitura.** Leituras rodam em transação `READ ONLY` (PostgreSQL, MySQL, Oracle), numa transação sempre desfeita (SQL Server, SQLite) ou com a configuração `readonly=1` do servidor (ClickHouse). Uma função que escreve dentro de um `SELECT` é barrada pelo próprio banco.
 3. **O usuário do banco.** O servidor de banco continua sendo a última barreira: use um usuário só com os grants necessários.
+
+No **Redis** os comandos são classificados pelo nome: `SADD`, `LPUSH` ou `ZADD` exigem insert; `INCR`, `EXPIRE` ou `RENAME` exigem update; `SET`, `HSET` ou `MSET` exigem insert e update (criam ou sobrescrevem); `DEL`, `HDEL` ou `LPOP` exigem delete; `FLUSHDB`, `CONFIG`, `EVAL` e qualquer comando desconhecido exigem DDL/Admin. Alguns nunca estão disponíveis, porque travam o servidor ou mudam uma conexão compartilhada: `KEYS` (use `SCAN`), `SELECT` (ponha o número do banco na connection string), `MULTI`/`EXEC`, `SUBSCRIBE`, `MONITOR` e comandos que bloqueiam, como `BLPOP`.
 
 No MongoDB as operações são estruturadas: `$merge` exige insert e update, `$out` exige insert, delete e DDL, e um update ou delete com filtro vazio exige `all_documents=true`.
 
@@ -176,7 +195,9 @@ go build -o comporta . && COMPORTA_ADMIN_PASSWORD=x COMPORTA_MCP_TOKEN=012345678
 | `internal/store` | store em SQLite, criptografia, auditoria |
 | `internal/web` | API da interface e a interface embutida (sem build de frontend) |
 
-**Por que Go:** todos os drivers são Go puro (sem CGO), então o resultado é um binário estático com a interface dentro, e uma imagem de uns 10 MB. O mesmo em Node ou Python ficaria entre 180 e 400 MB, e o SQL Server pediria bibliotecas ODBC nativas.
+**Testes de integração** rodam contra Oracle, ClickHouse e Redis de verdade, no Docker; o [docs/TESTING.md](docs/TESTING.md) mostra como. Sem eles, os testes usam SQLite e um Redis em memória.
+
+**Por que Go:** todos os drivers são Go puro (sem CGO), então o resultado é um binário estático com a interface dentro, e uma imagem de uns 13 MB. O mesmo em Node ou Python ficaria entre 180 e 400 MB, e o SQL Server pediria bibliotecas ODBC nativas.
 
 **A CI** roda a esteira de [`slipalison/github-workflows`](https://github.com/slipalison/github-workflows): lint, testes com piso de cobertura, imagem varrida pelo Trivy antes de publicar, Gitleaks, TruffleHog, Semgrep, SBOM, CodeQL, Quality Gate do SonarQube Cloud e versão calculada pelos [Conventional Commits](https://www.conventionalcommits.org/pt-br/).
 

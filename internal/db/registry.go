@@ -14,9 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"  // registers the "pgx" database/sql driver
 	_ "github.com/microsoft/go-mssqldb" // registers the "sqlserver" driver
+	"github.com/redis/go-redis/v9"
+	goora "github.com/sijms/go-ora/v2" // registers the "oracle" driver (pure Go)
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/connstring"
@@ -29,6 +32,7 @@ type handle struct {
 	fingerprint string
 	sql         *sql.DB
 	mongo       *mongo.Client
+	redis       *redis.Client
 }
 
 func (h *handle) close() {
@@ -39,6 +43,9 @@ func (h *handle) close() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = h.mongo.Disconnect(ctx)
+	}
+	if h.redis != nil {
+		_ = h.redis.Close()
 	}
 }
 
@@ -79,7 +86,8 @@ func (r *Registry) get(c model.Connection) (*handle, error) {
 }
 
 func (r *Registry) open(c model.Connection) (*handle, error) {
-	if c.Type == model.MongoDB {
+	switch c.Type {
+	case model.MongoDB:
 		client, err := mongo.Connect(options.Client().ApplyURI(c.DSN).
 			SetMaxPoolSize(10).
 			SetServerSelectionTimeout(10 * time.Second).
@@ -88,6 +96,14 @@ func (r *Registry) open(c model.Connection) (*handle, error) {
 			return nil, err
 		}
 		return &handle{mongo: client}, nil
+	case model.Redis:
+		opts, err := redis.ParseURL(c.DSN)
+		if err != nil {
+			return nil, err
+		}
+		opts.PoolSize = 5
+		opts.ClientName = "comporta"
+		return &handle{redis: redis.NewClient(opts)}, nil
 	}
 	driver, dsn, err := r.sqlDSN(c)
 	if err != nil {
@@ -126,6 +142,17 @@ func (r *Registry) Mongo(c model.Connection) (*mongo.Client, error) {
 	return h.mongo, nil
 }
 
+func (r *Registry) Redis(c model.Connection) (*redis.Client, error) {
+	if c.Type != model.Redis {
+		return nil, fmt.Errorf("connection %q is %s, not Redis", c.Name, c.Type)
+	}
+	h, err := r.get(c)
+	if err != nil {
+		return nil, err
+	}
+	return h.redis, nil
+}
+
 // Forget closes the pool of a connection that was edited or deleted.
 func (r *Registry) Forget(id int64) {
 	r.mu.Lock()
@@ -155,16 +182,23 @@ func (r *Registry) Test(ctx context.Context, c model.Connection) error {
 		return err
 	}
 	defer h.close()
-	if h.mongo != nil {
+	switch {
+	case h.mongo != nil:
 		return h.mongo.Ping(ctx, nil)
+	case h.redis != nil:
+		return h.redis.Ping(ctx).Err()
 	}
 	return h.sql.PingContext(ctx)
 }
 
 // Validate checks that the DSN can be parsed for its type.
 func (r *Registry) Validate(c model.Connection) error {
-	if c.Type == model.MongoDB {
+	switch c.Type {
+	case model.MongoDB:
 		_, err := connstring.ParseAndValidate(c.DSN)
+		return err
+	case model.Redis:
+		_, err := redis.ParseURL(c.DSN)
 		return err
 	}
 	_, _, err := r.sqlDSN(c)
@@ -188,6 +222,16 @@ func (r *Registry) sqlDSN(c model.Connection) (driver, dsn string, err error) {
 		return "pgx", c.DSN, nil
 	case model.SQLServer:
 		return "sqlserver", c.DSN, nil
+	case model.Oracle:
+		if _, err := goora.ParseConfig(c.DSN); err != nil {
+			return "", "", err
+		}
+		return "oracle", c.DSN, nil
+	case model.ClickHouse:
+		if _, err := clickhouse.ParseDSN(c.DSN); err != nil {
+			return "", "", err
+		}
+		return "clickhouse", c.DSN, nil
 	case model.MySQL:
 		dsn := c.DSN
 		if strings.HasPrefix(dsn, "mysql://") {

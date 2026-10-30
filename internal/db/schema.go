@@ -44,6 +44,17 @@ func tablesQuery(dbType model.DBType, schema string) (string, []any, error) {
 	case model.SQLite:
 		q = `SELECT 'main' AS table_schema, name AS table_name, type AS table_type FROM sqlite_master
 			WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'`
+	case model.Oracle:
+		// Unquoted Oracle names are stored in upper case; a schema is a user.
+		return `SELECT owner AS table_schema, table_name, 'TABLE' AS table_type FROM all_tables
+			WHERE owner = NVL(UPPER(:1), USER)
+			UNION ALL
+			SELECT owner, view_name, 'VIEW' FROM all_views WHERE owner = NVL(UPPER(:2), USER)
+			ORDER BY 1, 2`, []any{nullable(schema), nullable(schema)}, nil
+	case model.ClickHouse:
+		q = `SELECT database AS table_schema, name AS table_name, engine AS table_type FROM system.tables
+			WHERE database = if(? = '', currentDatabase(), ?) AND NOT is_temporary`
+		args = append(args, schema, schema)
 	default:
 		return "", nil, fmt.Errorf("unsupported type %s", dbType)
 	}
@@ -76,6 +87,16 @@ func columnsQuery(dbType model.DBType, schema, table string) (string, []any, err
 			IS_NULLABLE AS is_nullable, COLUMN_DEFAULT AS column_default, COLUMN_KEY AS column_key
 			FROM information_schema.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = COALESCE(?, DATABASE())
 			ORDER BY ORDINAL_POSITION`, []any{table, nullable(schema)}, nil
+	case model.Oracle:
+		return `SELECT owner AS table_schema, column_name, data_type, nullable AS is_nullable
+			FROM all_tab_columns
+			WHERE table_name IN (:1, UPPER(:2)) AND owner = NVL(UPPER(:3), USER)
+			ORDER BY column_id`, []any{table, table, nullable(schema)}, nil
+	case model.ClickHouse:
+		return `SELECT database AS table_schema, name AS column_name, type AS data_type,
+			default_expression AS column_default, comment
+			FROM system.columns WHERE table = ? AND database = if(? = '', currentDatabase(), ?)
+			ORDER BY position`, []any{table, schema, schema}, nil
 	case model.SQLite:
 		return `SELECT 'main' AS table_schema, name AS column_name, type AS data_type,
 			CASE "notnull" WHEN 1 THEN 'NO' ELSE 'YES' END AS is_nullable, dflt_value AS column_default, pk
