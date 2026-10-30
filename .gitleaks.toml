@@ -1,10 +1,10 @@
-# Exceções do Gitleaks, por VALOR e só para a regra que acusou: um segredo de
-# verdade posto no mesmo arquivo depois continua sendo pego.
+# Gitleaks exceptions, by VALUE and only for the rule that flagged it: a real
+# secret added to the same file later is still caught.
 
 [extend]
 useDefault = true
 
 [[allowlists]]
-description = "Token MCP de exemplo, os 16 caracteres 0-9a-f em ordem (o mínimo que o servidor aceita). Aparece no README (comando de desenvolvimento, desde o commit original do db-mcp) e em main_test.go. Não autentica nada: o servidor só aceita os tokens que o operador define no ambiente."
+description = "Example MCP token: the 16 characters 0-9a-f in order (the shortest the server accepts). Used in the README development command (since the original db-mcp commit) and in main_test.go. It authenticates nothing: the server only accepts the tokens its operator sets in the environment."
 targetRules = ["generic-api-key"]
 regexes = ['''^0123456789abcdef$''']

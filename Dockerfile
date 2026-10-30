@@ -1,20 +1,27 @@
 # syntax=docker/dockerfile:1
-# Binário Go estático (sem CGO: todos os drivers são Go puro) numa imagem
-# distroless, sem shell nem gerenciador de pacotes.
+# A static Go binary (no CGO: every driver is pure Go) on a distroless image,
+# with no shell and no package manager.
 FROM golang:1.27.3-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-ARG VERSION=dev
+# VERSION wins when given (docker compose passes COMPORTA_VERSION). The CI
+# builds the image before it knows the version number and passes the commit
+# in GIT_SHA instead: the binary then reports sha-<7 chars>, the same name as
+# the image tag in the registry.
+ARG VERSION=
+ARG GIT_SHA=
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/comporta . \
+    v="${VERSION}"; \
+    if [ -z "$v" ] && [ -n "$GIT_SHA" ]; then v="sha-$(echo "$GIT_SHA" | cut -c1-7)"; fi; \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${v:-dev}" -o /out/comporta . \
     && mkdir -p /out/data
 
-# distroless/static: certificados, tzdata e o usuário nonroot (65532).
+# distroless/static: CA certificates, tzdata and the nonroot user (65532).
 FROM gcr.io/distroless/static-debian13:nonroot
 LABEL org.opencontainers.image.title="comporta" \
-      org.opencontainers.image.description="Gateway MCP com permissões por conexão para PostgreSQL, SQL Server, MySQL, SQLite e MongoDB" \
+      org.opencontainers.image.description="One MCP server for PostgreSQL, SQL Server, MySQL, SQLite and MongoDB, with per-connection permissions and an audit log" \
       org.opencontainers.image.source="https://github.com/slipalison/comporta" \
       org.opencontainers.image.licenses="MIT"
 COPY --from=build /out/comporta /comporta

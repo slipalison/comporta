@@ -58,6 +58,9 @@ jobs:
         sonar.test.inclusions=**/*_test.go
         sonar.go.coverage.reportPaths=coverage.out
         sonar.coverage.exclusions=internal/web/static/**
+        # Translations are parallel by nature: the en and pt dictionaries have
+        # the same keys, and duplication detection ignores the text itself.
+        sonar.cpd.exclusions=internal/web/static/i18n.js
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -103,6 +106,13 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout da pagina do Docker Hub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: docs/DOCKERHUB.md
+          sparse-checkout-cone-mode: false
+
       - name: Login no Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -125,3 +135,29 @@ jobs:
             echo ""
             echo "\`docker pull ${destino}:${VERSAO}\` (tambem \`:latest\`), copiada de \`${origem}\`."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Atualizar a pagina do Docker Hub
+        # O "Overview" do repositorio no Docker Hub vem de docs/DOCKERHUB.md
+        # (o README usa imagens com caminho relativo, que la nao abrem). Nao
+        # derruba o job: a imagem ja foi publicada no passo anterior, e um
+        # token sem permissao de editar o repositorio so deixa a pagina antiga.
+        env:
+          USUARIO: ${{ secrets.DOCKERHUB_USERNAME }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          jwt=$(jq -n --arg u "$USUARIO" --arg s "$TOKEN" '{identifier: $u, secret: $s}' \
+            | curl -fsS -H 'Content-Type: application/json' --data @- https://hub.docker.com/v2/auth/token \
+            | jq -r '.access_token // empty') || jwt=""
+          if [ -z "$jwt" ]; then
+            echo "::warning::Docker Hub: nao foi possivel autenticar na API para atualizar a pagina."
+            exit 0
+          fi
+          echo "::add-mask::$jwt"
+          jq -n --rawfile full docs/DOCKERHUB.md \
+            --arg short "One MCP server for your databases, with per-connection permissions and an audit log." \
+            '{description: $short, full_description: $full}' \
+            | curl -fsS -X PATCH -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' --data @- \
+              "https://hub.docker.com/v2/namespaces/${USUARIO}/repositories/comporta" -o /dev/null \
+            && echo "Pagina do Docker Hub atualizada." \
+            || echo "::warning::Docker Hub: o token nao pode editar a pagina do repositorio (precisa de Read, Write, Delete)."

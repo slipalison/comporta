@@ -1,11 +1,11 @@
-# Lint da esteira (github-workflows, componente go) e do `make lint`.
+# Lint config, used by CI (github-workflows, go component) and locally.
 version: "2"
 linters:
   enable:
-    - gosec        # segurança: SQL montado, arquivos, crypto
-    - errorlint    # errors.Is/As em vez de == e type switch
+    - gosec        # security: built SQL, file paths, crypto
+    - errorlint    # errors.Is/As instead of == and type switches
     - bodyclose
-    - noctx        # toda chamada de rede com context
+    - noctx        # every network call takes a context
     - sqlclosecheck
     - rowserrcheck
     - nilerr
@@ -17,12 +17,12 @@ linters:
     revive:
       rules:
         - name: exported
-          disabled: true   # pacotes internos: doc em tudo que é exportado vira ruído
+          disabled: true   # internal packages: a doc comment on every export is noise
         - name: package-comments
           disabled: true
   exclusions:
     rules:
-      # Exemplos de DSN mostrados na UI, com senha de mentira.
+      # DSN examples shown in the UI, with fake passwords.
       - path: internal/model/model.go
         text: "G101"
       - path: _test\.go

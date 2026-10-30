@@ -142,6 +142,11 @@ html [hidden][hidden] { display: none; }
 .mainnav a:hover { color: var(--text); }
 .mainnav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
 
+.lang select {
+  width: auto; min-height: 32px; padding: 0 var(--s2); font-size: 0.875rem;
+  border-color: var(--border-strong); background: var(--surface);
+}
+@media (pointer: coarse) { .lang select { min-height: 44px; } }
 .pulse { margin-left: auto; display: flex; align-items: center; gap: var(--s2); font-size: 0.875rem; }
 .pulse-label { color: var(--muted); font-weight: 600; }
 .pulse-item {

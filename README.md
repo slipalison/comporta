@@ -1,106 +1,166 @@
 # Comporta
 
-**Um servidor MCP para vários bancos de dados, em que você decide o que a IA pode fazer em cada um.**
+**English** · [Português](README.pt-BR.md)
 
-Comporta é a porta que controla a passagem da água num canal: abre, fecha, deixa passar só o quanto precisa. Aqui ela fica entre as IAs (Claude Code, Copilot, Gemini…) e os seus bancos — PostgreSQL, SQL Server, MySQL/MariaDB, SQLite e MongoDB — e deixa passar leitura sempre, e escrita só onde você ligou.
+**One MCP server for all your databases, where you decide what the AI may do in each one.**
 
-- **Permissões por conexão**: `INSERT`, `UPDATE`, `DELETE` e `DDL/Admin` ligam e desligam numa tela, e valem na próxima chamada. `SELECT` está sempre liberado.
-- **Auditoria de toda chamada**: qual cliente, qual conexão, o comando, os parâmetros, o resultado, as linhas e a duração. Filtros, detalhe e exportação em CSV.
-- **Várias conexões ao mesmo tempo**, cada uma com o seu pool.
-- **Imagem de ~10 MB** (≈25 MB descompactada): binário Go estático em distroless, sem shell.
+Comporta (Portuguese for *sluice gate*) sits between your AI assistants (Claude Code, GitHub Copilot, Gemini…) and your databases: PostgreSQL, SQL Server, MySQL/MariaDB, SQLite and MongoDB. Reads always flow through; writes only flow where you open the gate.
 
-![Conexões: cada banco com o nível de risco e as permissões da IA](docs/img/conexoes.png)
+## Quick start with Docker
 
-| Auditoria | Nova conexão, tema escuro | Celular |
-|---|---|---|
-| ![Auditoria com filtros e o detalhe de uma chamada](docs/img/auditoria.png) | ![Formulário de nova conexão no tema escuro](docs/img/nova-conexao-escuro.png) | ![Lista de conexões no celular](docs/img/celular.png) |
+You need Docker. Three steps, about two minutes.
 
-## Subir
+**1. Create the settings file.** It holds the admin password and one token for your AI client:
 
 ```bash
-cp .env.example .env        # defina COMPORTA_ADMIN_PASSWORD e os tokens (openssl rand -hex 24)
-docker compose up -d --build
+cat > comporta.env <<EOF
+COMPORTA_ADMIN_PASSWORD=$(openssl rand -hex 12)
+COMPORTA_MCP_TOKENS=claude-code:$(openssl rand -hex 24)
+EOF
+cat comporta.env   # keep these two values: the password opens the admin UI, the token connects the AI
 ```
 
-- Interface: <http://127.0.0.1:7843> (usuário e senha do `.env`)
-- MCP: `http://127.0.0.1:7843/mcp` (Streamable HTTP, `Authorization: Bearer <token>`)
+**2. Start Comporta:**
 
-Para bancos que rodam no host, use `host.docker.internal` no lugar de `localhost` na connection string.
+```bash
+docker run -d --name comporta --restart unless-stopped \
+  --env-file comporta.env \
+  -p 127.0.0.1:7843:8080 \
+  -v comporta-data:/data \
+  slipalison/comporta:latest
+```
 
-A imagem publicada é `ghcr.io/slipalison/comporta:<versão>`, e a mesma imagem (o mesmo digest) também vai para o Docker Hub a cada versão.
-
-### Conectar um cliente
+**3. Open <http://127.0.0.1:7843>**, sign in as `admin` with the password from step 1, and add your first connection. Then connect your AI client:
 
 ```bash
 claude mcp add --transport http --scope user comporta http://127.0.0.1:7843/mcp \
-  --header "Authorization: Bearer <token-do-claude-code>"
+  --header "Authorization: Bearer <the token after claude-code: in comporta.env>"
 ```
 
-A aba **Conectar clientes** mostra os trechos para VS Code, Copilot CLI, Gemini e outros. Cada token de `COMPORTA_MCP_TOKENS` tem um rótulo (`claude-code:...,copilot:...`) que identifica o cliente na auditoria.
+That's it. Ask your assistant something like *"list the tables in my database"*, then look at the **Audit log** tab.
 
-## Configuração
+> **Database on the same machine?** Inside Docker, `localhost` is the container itself. Use `host.docker.internal` in the connection string and add `--add-host host.docker.internal:host-gateway` to `docker run`.
 
-| Variável | Padrão | |
-|---|---|---|
-| `COMPORTA_ADMIN_USER` / `COMPORTA_ADMIN_PASSWORD` | `admin` / — | Basic auth da interface. A senha é obrigatória. Dez senhas erradas em 5 minutos bloqueiam o endereço por 5 minutos. |
-| `COMPORTA_MCP_TOKENS` | — | `rotulo:token,...` (token com 16 caracteres ou mais). Ou `COMPORTA_MCP_TOKEN` para um só. |
-| `COMPORTA_SECRET_KEY` | gerada em `/data/secret.key` | Criptografa as connection strings (AES-256-GCM). A chave sai da frase por Argon2id, com um sal guardado em `/data/secret.salt`. Trocar a frase depois torna as connection strings guardadas ilegíveis, e o servidor não sobe. |
-| `COMPORTA_LOG_RETENTION_DAYS` | `30` | Registros mais antigos são apagados de hora em hora. |
-| `COMPORTA_MAX_ROWS_CAP` | `1000` | Teto global de linhas por consulta; cada conexão tem o seu limite abaixo disso. |
-| `COMPORTA_PORT` | `7843` | Porta no host, sempre em `127.0.0.1` (só no `docker compose`). |
+The same image is also on GitHub: `ghcr.io/slipalison/comporta`. Every version is published to both registries with the same digest. Pin a version (`slipalison/comporta:0.1.0`) instead of `latest` in production.
 
-**Vindo do `db-mcp`?** As variáveis `DBMCP_*` continuam lidas (com um aviso no log para renomear), e um volume com `dbmcp.db` continua sendo usado. Na primeira partida, as connection strings gravadas pelo `db-mcp` são cifradas de novo no formato novo. Se o `db-mcp` rodava **com** `DBMCP_SECRET_KEY`, a chave dele era o SHA-256 da frase, que o Comporta não calcula mais; informe-a uma vez, só para essa partida:
+### With Docker Compose
+
+The repository ships a `docker-compose.yml` that runs the container with a read-only filesystem, no Linux capabilities and the port bound to `127.0.0.1`:
 
 ```bash
-# a chave antiga, em hex (o printf é builtin: a frase não aparece no ps)
-printf %s "$DBMCP_SECRET_KEY" | sha256sum | cut -c1-64   # vira COMPORTA_LEGACY_KEY
+git clone https://github.com/slipalison/comporta.git && cd comporta
+cp .env.example .env        # set COMPORTA_ADMIN_PASSWORD and COMPORTA_MCP_TOKENS
+docker compose up -d
 ```
 
-Depois da primeira partida a variável pode sair. Sem ela, o servidor não sobe e diz isso no log.
+## What you get
 
-## O que a IA enxerga
+- **Per-connection permissions.** Turn `INSERT`, `UPDATE`, `DELETE` and `DDL/Admin` on or off for each database; changes apply to the next AI call. `SELECT` is always allowed.
+- **An audit log of every call.** Which client, which connection, the command, its parameters, the result, rows and duration. Filter, open the details, export to CSV.
+- **Many databases at once**, each with its own connection pool.
+- **A small, locked-down image.** About 10 MB compressed: a static Go binary on distroless, no shell.
+- **An admin UI in English and Portuguese**, accessible (WCAG 2.2 AA) and usable on a phone.
 
-As ferramentas são montadas a partir das conexões **ativas**, e o parâmetro `connection` de cada uma é um `enum` só com as conexões válidas para ela, descritas com tipo, dialeto, estilo de parâmetro, descrição e permissões:
+![Connections: each database with its risk level and the AI's permissions](docs/img/connections.png)
 
-| Ferramenta | Quando aparece |
+| Audit log | New connection, dark theme | Phone |
+|---|---|---|
+| ![Audit log with filters and the details of one call](docs/img/audit.png) | ![New connection form in the dark theme](docs/img/new-connection-dark.png) | ![Connections on a phone](docs/img/mobile.png) |
+
+## Connecting AI clients
+
+Comporta speaks MCP over Streamable HTTP at `http://127.0.0.1:7843/mcp`. Every request carries `Authorization: Bearer <token>`.
+
+Each client should have its own token. Give each one a label in `COMPORTA_MCP_TOKENS`, separated by commas:
+
+```
+COMPORTA_MCP_TOKENS=claude-code:<token-1>,copilot:<token-2>
+```
+
+The label shows up in the audit log, so you know which assistant ran each command. The **Connect clients** tab in the UI has ready-to-copy snippets for Claude Code, VS Code / GitHub Copilot (`mcp.json`), Copilot CLI, Gemini CLI and other clients (`mcpServers`).
+
+## Configuration
+
+All settings are environment variables.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `COMPORTA_ADMIN_PASSWORD` | — (required) | Password of the admin UI (HTTP basic auth). Ten wrong passwords in 5 minutes block that address for 5 minutes. |
+| `COMPORTA_ADMIN_USER` | `admin` | User name of the admin UI. |
+| `COMPORTA_MCP_TOKENS` | — (required) | `label:token,...`; each token at least 16 characters. `COMPORTA_MCP_TOKEN` works for a single token. |
+| `COMPORTA_SECRET_KEY` | random key in `/data/secret.key` | Passphrase that encrypts the stored connection strings (AES-256-GCM, key derived with Argon2id). Changing it later makes the stored connection strings unreadable, and the server refuses to start. |
+| `COMPORTA_LOG_RETENTION_DAYS` | `30` | Audit records older than this are deleted every hour. |
+| `COMPORTA_MAX_ROWS_CAP` | `1000` | Maximum rows any query may return; each connection sets its own limit below this. |
+| `COMPORTA_PORT` | `7843` | Host port, always on `127.0.0.1` (Docker Compose only). |
+
+Keep `comporta.env` (or `.env`) out of the folders your AI agents can read: anyone with the admin password can change the permissions.
+
+### Upgrading from db-mcp
+
+Comporta was called db-mcp before. An existing volume keeps working: `DBMCP_*` variables are still read (the log asks you to rename them), and `dbmcp.db` is still used. On the first start, stored connection strings are re-encrypted in the new format.
+
+Only if db-mcp ran **with** `DBMCP_SECRET_KEY`, start Comporta once with the old key in `COMPORTA_LEGACY_KEY`:
+
+```bash
+printf %s "$DBMCP_SECRET_KEY" | sha256sum | cut -c1-64   # this is COMPORTA_LEGACY_KEY
+```
+
+After that first start you can remove it. Without it, the server does not start and the log says why.
+
+## What the AI sees
+
+Tools are built from the **active** connections. Each tool's `connection` parameter lists only the connections that tool can use, with their type, SQL dialect, parameter style, description and permissions.
+
+| Tool | Available when |
 |---|---|
-| `list_connections` | sempre: nome, tipo, dialeto, placeholder, permissões e quais ferramentas usar |
-| `describe_schema` | há conexões: tabelas e colunas (SQL) ou coleções, campos inferidos e índices (MongoDB) |
-| `sql_query` | há conexões SQL: um `SELECT`/`WITH`/`SHOW`/`EXPLAIN`, em transação sempre desfeita |
-| `sql_execute` | há conexão SQL com alguma escrita liberada; aceita `dry_run` |
-| `mongo_find`, `mongo_aggregate`, `mongo_count` | há conexões MongoDB |
-| `mongo_insert` / `mongo_update` / `mongo_delete` | há conexão MongoDB com a permissão correspondente |
+| `list_connections` | always: name, type, dialect, permissions and which tools to use |
+| `describe_schema` | there is any connection: tables and columns (SQL), or collections, sampled fields and indexes (MongoDB) |
+| `sql_query` | there is a SQL connection: one `SELECT`/`WITH`/`SHOW`/`EXPLAIN`, in a transaction that is always rolled back |
+| `sql_execute` | some SQL connection allows writes; supports `dry_run` |
+| `mongo_find`, `mongo_aggregate`, `mongo_count` | there is a MongoDB connection |
+| `mongo_insert`, `mongo_update`, `mongo_delete` | a MongoDB connection allows that operation |
 
-Clientes que guardam a lista de ferramentas podem precisar reconectar depois de uma mudança na interface. As permissões, porém, são conferidas a cada chamada.
+**Write a good description for each connection.** It is how the AI picks the right database.
 
-## Como as permissões são garantidas
+Clients that cache the tool list may need to reconnect after you change a connection. Permissions, however, are checked on every call.
 
-1. **Classificador de SQL por dialeto** (`internal/guard`): tokeniza respeitando comentários, strings, `$$` do Postgres, `[ ]` do T-SQL e crases do MySQL; acha escrita escondida em CTE, `SELECT INTO`, `MERGE`, `EXEC`, `COPY`, `SET`, `OPENQUERY` e afins; aceita um statement por chamada. O que ele não reconhece como leitura conta como DDL/Admin. No SQLite, `ATTACH` e `DETACH` são sempre recusados: abririam outro arquivo, inclusive o banco do próprio gateway.
-2. **Transação de leitura**: leituras rodam em `READ ONLY` (Postgres, MySQL) ou numa transação sempre desfeita (SQL Server, SQLite). Uma função que escreve dentro de um `SELECT` é barrada pelo próprio banco.
-3. **Usuário do banco**: o servidor de banco continua sendo a última barreira. Use na connection string um usuário só com os grants necessários.
+## How permissions are enforced
 
-No MongoDB as operações são estruturadas: `$merge` exige insert+update, `$out` exige insert+delete+ddl, e update/delete com filtro vazio exigem `all_documents=true`.
+Three layers, from the gateway down to the database:
 
-**DDL/Admin dá poder total** (`DROP`, `EXEC`, `GRANT`, `SET ROLE`…). A interface pede confirmação antes de ligar `DELETE` ou `DDL`; deixe desligado se não precisar.
+1. **A SQL classifier per dialect** (`internal/guard`). It reads comments, strings, Postgres `$$` quotes, T-SQL `[ ]` and MySQL backticks the way each database does. It finds writes hidden in CTEs, `SELECT INTO`, `MERGE`, `EXEC`, `COPY`, `SET`, `OPENQUERY` and similar. One statement per call; anything it cannot prove is a read counts as DDL/Admin. In SQLite, `ATTACH` and `DETACH` are always refused, because they would open other files, including Comporta's own database.
+2. **Read-only transactions.** Reads run in `READ ONLY` transactions (Postgres, MySQL) or in a transaction that is always rolled back (SQL Server, SQLite), so a function that writes inside a `SELECT` is stopped by the database itself.
+3. **The database user.** The database server is still the last line of defense: use a user with only the grants it needs.
 
-**Segurança da interface**: ela decide o que a IA pode fazer, então fica atrás de senha, só em `127.0.0.1`, com proteção CSRF (`http.CrossOriginProtection`) e uma CSP sem `unsafe-inline`. Um agente com acesso ao shell e ao `.env` poderia usar a senha: mantenha o `.env` fora do workspace dos agentes (por exemplo, nas variáveis de ambiente da stack no Portainer).
+MongoDB operations are structured: `$merge` needs insert and update, `$out` needs insert, delete and DDL, and an update or delete with an empty filter needs `all_documents=true`.
 
-## A interface
+**DDL/Admin is full power** (`DROP`, `EXEC`, `GRANT`, `SET ROLE`…). The UI asks for confirmation before turning on `DELETE` or `DDL`. Leave them off unless you need them.
 
-Desenhada com o [kit Leis de UX](https://github.com/slipalison/leis-de-ux) e auditada com axe-core (WCAG 2.2 AA, zero violações em 390, 1440 e 320 px, temas claro e escuro). As decisões principais:
+**The admin UI** decides what the AI may do, so it sits behind a password, listens only on `127.0.0.1`, blocks cross-site requests (CSRF) and runs under a Content Security Policy without `unsafe-inline`.
 
-| Lei ou regra | Onde |
+## The admin UI
+
+- **Languages:** English and Portuguese. Comporta follows your browser's language, and you can switch with the selector at the top; the choice is remembered.
+- **Safe by design:** confirmation before allowing destructive writes or deleting a connection, **Undo** after every permission change, and a warning before discarding an edited form.
+- **Fast to use:** press `n` for a new connection and `/` to search the audit log. Filters live in the address (`#/audit?status=denied`), so the back button and bookmarks work.
+- **Accessible:** checked with axe-core (WCAG 2.2 AA, no violations at 320, 390 and 1440 px, light and dark themes), with keyboard navigation and screen-reader labels. Color contrast is verified by a test (`internal/web/contrast_test.go`).
+
+It was designed with the [UX Laws kit](https://github.com/slipalison/leis-de-ux). The main decisions:
+
+| Law | Where |
 |---|---|
-| Região comum | cada conexão é um cartão: identificação, permissões e ações em faixas separadas |
-| Similaridade | toda permissão é o mesmo botão de alternância; liberado = ícone ✓ + cor, nunca só cor; `DELETE` e `DDL` ligados em vermelho |
-| Von Restorff | uma ação primária por tela ("Nova conexão"); o nível de risco da conexão (somente leitura, leitura e escrita, acesso total) em destaque |
-| Fitts | alvos de 40 px (44 px em toque); "Excluir" afastado de "Testar" e "Editar" |
-| Postel | o nome aceita "Pagamentos Prod" e mostra `pagamentos_prod` ao sair do campo; cada erro volta para o campo que o causou, com o formato esperado |
-| Tesler | o sistema absorve o que sabe: exemplo de connection string do tipo escolhido, filtro de data enviado como instante absoluto (sem depender do fuso do servidor), atividade de 24 h em cada conexão |
+| Common region | each connection is a card, with identity, permissions and actions in separate bands |
+| Similarity | every permission is the same toggle; "allowed" is a ✓ icon plus color, never color alone; `DELETE` and `DDL` turn red |
+| Von Restorff | one primary action per screen ("New connection"); the connection's risk level stands out |
+| Fitts | 40 px targets (44 px on touch screens); "Delete" kept away from "Test" and "Edit" |
+| Postel | "Payments Prod" is accepted and shown as `payments_prod`; every error appears next to the field that caused it |
+| Tesler | the system carries what it knows: a connection-string example for the chosen type, dates sent as absolute instants, 24-hour activity on each connection |
 
-Também: confirmação antes de liberar escrita destrutiva e de excluir, "Desfazer" em toda troca de permissão, aviso antes de descartar um formulário editado, atalhos `n` (nova conexão) e `/` (busca na auditoria), navegação com o botão voltar (`#/auditoria?status=denied`), e a tabela de auditoria vira cartões no celular. Os pares de cor são verificados por teste (`internal/web/contrast_test.go`).
+### Adding a language
 
-## Desenvolvimento
+All texts live in [`internal/web/static/i18n.js`](internal/web/static/i18n.js). Copy the `en` dictionary, translate it, and add the language to `DICTIONARIES` and `LANGUAGES`. A test (`internal/web/i18n_test.go`) fails if a key is missing in any language.
+
+## Development
 
 ```bash
 go test -race ./...
@@ -108,21 +168,18 @@ golangci-lint run ./...          # .golangci.yml: gosec, errorlint, noctx, reviv
 go build -o comporta . && COMPORTA_ADMIN_PASSWORD=x COMPORTA_MCP_TOKEN=0123456789abcdef ./comporta
 ```
 
-Estrutura: `internal/guard` (classificador SQL), `internal/db` (pools, execução SQL e MongoDB, schema), `internal/mcpsrv` (ferramentas MCP), `internal/store` (SQLite, criptografia, auditoria), `internal/web` (API e interface embutida, sem build de frontend).
+| Package | What it does |
+|---|---|
+| `internal/guard` | SQL classifier |
+| `internal/db` | connection pools, SQL and MongoDB execution, schema |
+| `internal/mcpsrv` | MCP tools |
+| `internal/store` | SQLite store, encryption, audit log |
+| `internal/web` | admin API and the embedded UI (no frontend build step) |
 
-### Por que Go
+**Why Go:** every driver is pure Go (no CGO), so the result is one static binary with the UI embedded, and an image of about 10 MB. The same in Node or Python would be 180 to 400 MB, and SQL Server would need native ODBC libraries.
 
-| | Go | Node/TS | Python |
-|---|---|---|---|
-| Imagem final | **~10 MB** (estático + distroless) | ~180–250 MB | ~250–400 MB (SQL Server via ODBC soma ~100 MB) |
-| Drivers | pgx, go-mssqldb, go-sql-driver/mysql, mongo-driver v2, SQLite puro Go (sem CGO) | bons | bons, mas SQL Server exige ODBC nativo |
-| SDK MCP | oficial (`modelcontextprotocol/go-sdk`) | oficial | oficial |
-| Deploy | 1 binário, interface embutida | `node_modules` | venv e libs nativas |
+**CI** runs the shared pipeline from [`slipalison/github-workflows`](https://github.com/slipalison/github-workflows): lint, tests with a coverage floor, the image scanned by Trivy before it is published, Gitleaks, TruffleHog, Semgrep, SBOM, CodeQL, a SonarQube Cloud quality gate, and versions computed from [Conventional Commits](https://www.conventionalcommits.org/).
 
-### CI
-
-A esteira é a de [`slipalison/github-workflows`](https://github.com/slipalison/github-workflows) (`.github/workflows/ci.yml`): lint, testes com piso de cobertura, imagem com portão de vulnerabilidade do Trivy, Gitleaks, TruffleHog, Semgrep, SBOM, CodeQL, SonarQube Cloud com Quality Gate e versão semântica pelos commits ([Conventional Commits](https://www.conventionalcommits.org/pt-br/)).
-
-## Licença
+## License
 
 [MIT](LICENSE)
