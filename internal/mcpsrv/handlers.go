@@ -49,6 +49,9 @@ func (s *Server) handleDescribe(ctx context.Context, req *mcp.CallToolRequest) (
 	ctx, cancel := s.withTimeout(ctx, conn)
 	defer cancel()
 
+	if conn.Type == model.Redis {
+		return s.describeRedis(ctx, c, conn, a)
+	}
 	if conn.Type != model.MongoDB {
 		pool, err := s.reg.SQL(conn)
 		if err != nil {
@@ -169,7 +172,7 @@ func (s *Server) runSQL(ctx context.Context, c *call, conn model.Connection, a s
 		c.entry.Operation += " (dry-run)"
 	}
 	res, err := db.RunSQL(ctx, pool, conn.Type, db.SQLRequest{
-		Query:       a.SQL,
+		Query:       trimStatement(a.SQL),
 		Args:        sqlParams(a.Params),
 		Write:       write,
 		ReturnsRows: an.ReturnsRows,
@@ -189,6 +192,12 @@ func (s *Server) runSQL(ctx context.Context, c *call, conn model.Connection, a s
 		Operation  string `json:"operation"`
 		*db.Result
 	}{conn.Name, string(conn.Type), an.Operation(), res}, rows)
+}
+
+// trimStatement drops the trailing semicolons the classifier already accepted
+// as the end of the one statement: Oracle refuses them (ORA-00933).
+func trimStatement(q string) string {
+	return strings.TrimRight(strings.TrimSpace(q), "; \t\r\n")
 }
 
 // sqlParams turns JSON values into driver arguments: integers stay integers,

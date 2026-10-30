@@ -261,20 +261,22 @@ func (l lexer) next(i int) (int, *token, error) {
 	switch {
 	case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
 		return i + 1, nil, nil
-	case l.at(i, "--") || (c == '#' && l.db == model.MySQL):
+	case l.at(i, "--") || (c == '#' && (l.db == model.MySQL || l.db == model.ClickHouse)):
 		return l.skipLine(i), nil, nil
 	case l.at(i, "/*"):
 		end, err := l.skipBlock(i)
 		return end, nil, err
 	}
 	if closing, ok := l.quote(c); ok {
-		// Only MySQL escapes with a backslash, and only inside '...' and "...".
-		end, err := skipQuoted(l.s, i, closing, l.db == model.MySQL && (c == '\'' || c == '"'))
+		end, err := skipQuoted(l.s, i, closing, l.backslashEscapes(c))
 		return end, other, err
 	}
 	switch {
-	case c == '$' && l.db == model.Postgres:
+	case (c == '$' && (l.db == model.Postgres || l.db == model.ClickHouse)):
 		return l.dollar(i)
+	case l.db == model.Oracle && l.oracleQuote(i) > 0:
+		end, err := l.skipOracleQuote(i)
+		return end, other, err
 	case isWordStart(l.db, c):
 		j := l.span(i+1, func(b byte) bool { return isWordChar(l.db, b) })
 		return j, &token{kind: tkWord, text: strings.ToUpper(l.s[i:j])}, nil
@@ -298,13 +300,52 @@ func (l lexer) skipLine(i int) int {
 	return l.span(i, func(b byte) bool { return b != '\n' })
 }
 
-// skipBlock skips a /* comment */. Postgres and SQL Server nest them; MySQL
+// backslashEscapes reports whether \ escapes the next character inside a
+// literal opened by c: MySQL in '...' and "...", ClickHouse in every quote.
+func (l lexer) backslashEscapes(c byte) bool {
+	switch l.db {
+	case model.MySQL:
+		return c == '\'' || c == '"'
+	case model.ClickHouse:
+		return true
+	}
+	return false
+}
+
+// oracleQuote returns the length of an Oracle alternative-quote opener at i
+// (q' or nq', any case), or 0. q'[it's]' is a string whose delimiter is [ ].
+func (l lexer) oracleQuote(i int) int {
+	for _, prefix := range []string{"q'", "nq'"} {
+		if len(l.s)-i > len(prefix) && strings.EqualFold(l.s[i:i+len(prefix)], prefix) {
+			return len(prefix)
+		}
+	}
+	return 0
+}
+
+// skipOracleQuote skips q'<d>...<d>'. The closing delimiter is the pair of
+// [ { ( < and the same character otherwise.
+func (l lexer) skipOracleQuote(i int) (int, error) {
+	start := i + l.oracleQuote(i)
+	open := l.s[start]
+	closing := map[byte]byte{'[': ']', '{': '}', '(': ')', '<': '>'}[open]
+	if closing == 0 {
+		closing = open
+	}
+	end := strings.Index(l.s[start+1:], string(closing)+"'")
+	if end < 0 {
+		return 0, fmt.Errorf("unterminated q-quoted string starting at position %d", i)
+	}
+	return start + 1 + end + 2, nil
+}
+
+// skipBlock skips a /* comment */. Postgres, SQL Server and ClickHouse nest them; MySQL
 // executable comments (/*! ... */) run as code and are refused.
 func (l lexer) skipBlock(i int) (int, error) {
 	if l.db == model.MySQL && (l.at(i, "/*!") || l.at(i, "/*M!")) {
 		return 0, errors.New("MySQL executable comments (/*! ... */) are not allowed")
 	}
-	nested := l.db == model.Postgres || l.db == model.SQLServer
+	nested := l.db == model.Postgres || l.db == model.SQLServer || l.db == model.ClickHouse
 	depth := 1
 	for i += 2; i < len(l.s) && depth > 0; {
 		switch {
@@ -330,7 +371,7 @@ func (l lexer) quote(c byte) (byte, bool) {
 	switch {
 	case c == '\'' || c == '"':
 		return c, true
-	case c == '`' && (l.db == model.MySQL || l.db == model.SQLite):
+	case c == '`' && (l.db == model.MySQL || l.db == model.SQLite || l.db == model.ClickHouse):
 		return '`', true
 	case c == '[' && (l.db == model.SQLServer || l.db == model.SQLite):
 		return ']', true

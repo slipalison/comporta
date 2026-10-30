@@ -19,7 +19,7 @@ func TestPermissions(t *testing.T) {
 }
 
 func TestDBTypes(t *testing.T) {
-	if !Postgres.Valid() || DBType("oracle").Valid() {
+	if !Postgres.Valid() || DBType("db2").Valid() {
 		t.Fatal("Valid")
 	}
 	if !SQLite.IsSQL() || MongoDB.IsSQL() || MongoDB.Info().Label != "MongoDB" {

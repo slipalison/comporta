@@ -22,11 +22,14 @@ const (
 type DBType string
 
 const (
-	Postgres  DBType = "postgres"
-	SQLServer DBType = "sqlserver"
-	MySQL     DBType = "mysql"
-	SQLite    DBType = "sqlite"
-	MongoDB   DBType = "mongodb"
+	Postgres   DBType = "postgres"
+	SQLServer  DBType = "sqlserver"
+	MySQL      DBType = "mysql"
+	SQLite     DBType = "sqlite"
+	Oracle     DBType = "oracle"
+	ClickHouse DBType = "clickhouse"
+	MongoDB    DBType = "mongodb"
+	Redis      DBType = "redis"
 )
 
 // DBTypeInfo describes a database type for both the admin UI and the LLM.
@@ -67,6 +70,25 @@ var DBTypes = map[DBType]DBTypeInfo{
 		Placeholder: "?",
 		DSNExample:  "/data/files/app.db",
 	},
+	Oracle: {
+		Label:       "Oracle Database",
+		SQL:         true,
+		Dialect:     `Oracle SQL: FETCH FIRST n ROWS ONLY (or ROWNUM), "double quotes" for case-sensitive identifiers, unquoted names are upper case, SYSDATE, DUAL, schemas are users. No trailing semicolon needed`,
+		Placeholder: ":1, :2, ...",
+		DSNExample:  "oracle://user:pass@host:1521/service_name",
+	},
+	ClickHouse: {
+		Label:       "ClickHouse",
+		SQL:         true,
+		Dialect:     "ClickHouse SQL: LIMIT n, `backticks` or \"double quotes\" for identifiers, now(), toDate(), arrays and maps, databases instead of schemas. Columnar and append-oriented: prefer aggregations, avoid row-by-row updates",
+		Placeholder: "?",
+		DSNExample:  "clickhouse://user:pass@host:9000/dbname",
+	},
+	Redis: {
+		Label:      "Redis / Valkey",
+		Dialect:    "Redis commands (NOT SQL): pass the command name and its arguments, e.g. GET user:1, HGETALL session:42, SCAN 0 MATCH order:* COUNT 100. KEYS, SELECT, MULTI, SUBSCRIBE and blocking commands are not available",
+		DSNExample: "redis://user:pass@host:6379/0",
+	},
 	MongoDB: {
 		Label:      "MongoDB",
 		Dialect:    "MongoDB query language (NOT SQL): filters, projections and aggregation pipelines as MongoDB Extended JSON, e.g. {\"_id\": {\"$oid\": \"...\"}}, {\"$date\": \"2024-01-01T00:00:00Z\"}",
@@ -76,6 +98,11 @@ var DBTypes = map[DBType]DBTypeInfo{
 
 func (t DBType) Valid() bool { _, ok := DBTypes[t]; return ok }
 func (t DBType) IsSQL() bool { return DBTypes[t].SQL }
+
+// Transactional reports whether writes can run in a transaction that is
+// rolled back (dry_run) and reads in one that never commits. ClickHouse has
+// no transactions; its reads are protected by readonly=1 instead.
+func (t DBType) Transactional() bool { return t.IsSQL() && t != ClickHouse }
 func (t DBType) Info() DBTypeInfo {
 	return DBTypes[t]
 }

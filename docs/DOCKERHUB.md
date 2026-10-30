@@ -2,7 +2,7 @@
 
 **One MCP server for all your databases, where you decide what the AI may do in each one.**
 
-Comporta sits between your AI assistants (Claude Code, GitHub Copilot, Gemini…) and your databases: PostgreSQL, SQL Server, MySQL/MariaDB, SQLite and MongoDB. Reads always flow through; writes (`INSERT`, `UPDATE`, `DELETE`, `DDL`) only where you turn them on. Every call is recorded in an audit log, and an admin UI in English and Portuguese lets you manage it all.
+Comporta sits between your AI assistants (Claude Code, GitHub Copilot, Gemini…) and your databases: PostgreSQL, SQL Server, MySQL/MariaDB, Oracle, SQLite, ClickHouse, MongoDB and Redis (plus compatible ones such as CockroachDB, Supabase, TiDB and Valkey). Reads always flow through; writes (`INSERT`, `UPDATE`, `DELETE`, `DDL`) only where you turn them on. Every call is recorded in an audit log, and an admin UI in English and Portuguese lets you manage it all.
 
 Source, full docs and Portuguese version: **https://github.com/slipalison/comporta** · [Português](https://github.com/slipalison/comporta/blob/main/README.pt-BR.md)
 

@@ -4,7 +4,7 @@
 
 **One MCP server for all your databases, where you decide what the AI may do in each one.**
 
-Comporta (Portuguese for *sluice gate*) sits between your AI assistants (Claude Code, GitHub Copilot, Gemini…) and your databases: PostgreSQL, SQL Server, MySQL/MariaDB, SQLite and MongoDB. Reads always flow through; writes only flow where you open the gate.
+Comporta (Portuguese for *sluice gate*) sits between your AI assistants (Claude Code, GitHub Copilot, Gemini…) and your databases: PostgreSQL, SQL Server, MySQL/MariaDB, Oracle, SQLite, ClickHouse, MongoDB and Redis. Reads always flow through; writes only flow where you open the gate.
 
 ## Quick start with Docker
 
@@ -58,7 +58,7 @@ docker compose up -d
 - **Per-connection permissions.** Turn `INSERT`, `UPDATE`, `DELETE` and `DDL/Admin` on or off for each database; changes apply to the next AI call. `SELECT` is always allowed.
 - **An audit log of every call.** Which client, which connection, the command, its parameters, the result, rows and duration. Filter, open the details, export to CSV.
 - **Many databases at once**, each with its own connection pool.
-- **A small, locked-down image.** About 10 MB compressed: a static Go binary on distroless, no shell.
+- **A small, locked-down image.** About 13 MB compressed: a static Go binary on distroless, no shell.
 - **An admin UI in English and Portuguese**, accessible (WCAG 2.2 AA) and usable on a phone.
 
 ![Connections: each database with its risk level and the AI's permissions](docs/img/connections.png)
@@ -66,6 +66,21 @@ docker compose up -d
 | Audit log | New connection, dark theme | Phone |
 |---|---|---|
 | ![Audit log with filters and the details of one call](docs/img/audit.png) | ![New connection form in the dark theme](docs/img/new-connection-dark.png) | ![Connections on a phone](docs/img/mobile.png) |
+
+## Supported databases
+
+| Database | Connection string | Also works with | Notes |
+|---|---|---|---|
+| PostgreSQL | `postgres://user:pass@host:5432/db?sslmode=require` | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, Aurora PostgreSQL, AlloyDB | reads in a `READ ONLY` transaction |
+| SQL Server | `sqlserver://user:pass@host:1433?database=db` | Azure SQL | reads in a transaction that is always rolled back |
+| MySQL / MariaDB | `mysql://user:pass@host:3306/db` | TiDB, PlanetScale, Aurora MySQL | reads in a `READ ONLY` transaction |
+| Oracle Database | `oracle://user:pass@host:1521/service_name` | Oracle Autonomous Database | reads in a `SET TRANSACTION READ ONLY` transaction; tested with Oracle 23ai Free |
+| SQLite | `/data/files/app.db` | | the file must be inside the container (mount it) |
+| ClickHouse | `clickhouse://user:pass@host:9000/db` | ClickHouse Cloud | no transactions: reads run with `readonly=1`, and `dry_run` is not available |
+| MongoDB | `mongodb://user:pass@host:27017/db?authSource=admin` | MongoDB Atlas | structured operations, Extended JSON |
+| Redis / Valkey | `redis://user:pass@host:6379/0` (`rediss://` for TLS) | Valkey, KeyDB, Dragonfly, ElastiCache, Upstash | one command per call; see below |
+
+Every driver is pure Go, which keeps the image small and free of native libraries. That is also why some databases are not here yet: Snowflake and BigQuery would bring SDKs larger than the rest of the image, and IBM Db2 and DuckDB need C libraries. [Open an issue](https://github.com/slipalison/comporta/issues) if you need one of them.
 
 ## Connecting AI clients
 
@@ -119,6 +134,8 @@ Tools are built from the **active** connections. Each tool's `connection` parame
 | `sql_execute` | some SQL connection allows writes; supports `dry_run` |
 | `mongo_find`, `mongo_aggregate`, `mongo_count` | there is a MongoDB connection |
 | `mongo_insert`, `mongo_update`, `mongo_delete` | a MongoDB connection allows that operation |
+| `redis_query` | there is a Redis connection: one read command (`GET`, `HGETALL`, `LRANGE`, `SCAN`…) |
+| `redis_execute` | some Redis connection allows writes |
 
 **Write a good description for each connection.** It is how the AI picks the right database.
 
@@ -126,11 +143,13 @@ Clients that cache the tool list may need to reconnect after you change a connec
 
 ## How permissions are enforced
 
-Three layers, from the gateway down to the database:
+For SQL databases, three layers, from the gateway down to the database:
 
-1. **A SQL classifier per dialect** (`internal/guard`). It reads comments, strings, Postgres `$$` quotes, T-SQL `[ ]` and MySQL backticks the way each database does. It finds writes hidden in CTEs, `SELECT INTO`, `MERGE`, `EXEC`, `COPY`, `SET`, `OPENQUERY` and similar. One statement per call; anything it cannot prove is a read counts as DDL/Admin. In SQLite, `ATTACH` and `DETACH` are always refused, because they would open other files, including Comporta's own database.
-2. **Read-only transactions.** Reads run in `READ ONLY` transactions (Postgres, MySQL) or in a transaction that is always rolled back (SQL Server, SQLite), so a function that writes inside a `SELECT` is stopped by the database itself.
+1. **A SQL classifier per dialect** (`internal/guard`). It reads comments, strings, Postgres `$$` quotes, T-SQL `[ ]` and MySQL backticks the way each database does. Oracle's `q'[...]'` quotes and ClickHouse's `#` comments and backslash escapes are read the same way. It finds writes hidden in CTEs, `SELECT INTO`, `MERGE`, `EXEC`, `COPY`, `SET`, `OPENQUERY` and similar. One statement per call; anything it cannot prove is a read counts as DDL/Admin. In SQLite, `ATTACH` and `DETACH` are always refused, because they would open other files, including Comporta's own database.
+2. **Read-only transactions.** Reads run in `READ ONLY` transactions (PostgreSQL, MySQL, Oracle), in a transaction that is always rolled back (SQL Server, SQLite), or with the server setting `readonly=1` (ClickHouse), so a function that writes inside a `SELECT` is stopped by the database itself.
 3. **The database user.** The database server is still the last line of defense: use a user with only the grants it needs.
+
+**Redis** commands are classified by name: `SADD`, `LPUSH` or `ZADD` need insert; `INCR`, `EXPIRE` or `RENAME` need update; `SET`, `HSET` or `MSET` need insert and update (they create or overwrite); `DEL`, `HDEL` or `LPOP` need delete; `FLUSHDB`, `CONFIG`, `EVAL` and any unknown command need DDL/Admin. A few are never available, because they block the server or change a shared connection: `KEYS` (use `SCAN`), `SELECT` (put the database number in the connection string), `MULTI`/`EXEC`, `SUBSCRIBE`, `MONITOR` and blocking commands such as `BLPOP`.
 
 MongoDB operations are structured: `$merge` needs insert and update, `$out` needs insert, delete and DDL, and an update or delete with an empty filter needs `all_documents=true`.
 
@@ -176,7 +195,9 @@ go build -o comporta . && COMPORTA_ADMIN_PASSWORD=x COMPORTA_MCP_TOKEN=012345678
 | `internal/store` | SQLite store, encryption, audit log |
 | `internal/web` | admin API and the embedded UI (no frontend build step) |
 
-**Why Go:** every driver is pure Go (no CGO), so the result is one static binary with the UI embedded, and an image of about 10 MB. The same in Node or Python would be 180 to 400 MB, and SQL Server would need native ODBC libraries.
+**Integration tests** run against real Oracle, ClickHouse and Redis servers in Docker; [docs/TESTING.md](docs/TESTING.md) shows how. Without them, the tests use SQLite and an in-memory Redis.
+
+**Why Go:** every driver is pure Go (no CGO), so the result is one static binary with the UI embedded, and an image of about 13 MB. The same in Node or Python would be 180 to 400 MB, and SQL Server would need native ODBC libraries.
 
 **CI** runs the shared pipeline from [`slipalison/github-workflows`](https://github.com/slipalison/github-workflows): lint, tests with a coverage floor, the image scanned by Trivy before it is published, Gitleaks, TruffleHog, Semgrep, SBOM, CodeQL, a SonarQube Cloud quality gate, and versions computed from [Conventional Commits](https://www.conventionalcommits.org/).
 
