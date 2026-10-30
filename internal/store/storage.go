@@ -40,15 +40,19 @@ func CheckWritable(dir string) error {
 // DetectStorage reports whether dir survives the container. Outside a
 // container the data is on the machine's disk, so it is persistent.
 func DetectStorage(dir string) Storage {
+	return detectStorage(dir, inContainer(), func() (io.ReadCloser, error) { return os.Open("/proc/self/mountinfo") })
+}
+
+func detectStorage(dir string, container bool, mountinfo func() (io.ReadCloser, error)) Storage {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		abs = dir
 	}
 	st := Storage{Path: abs, Persistent: true}
-	if !inContainer() {
+	if !container {
 		return st
 	}
-	f, err := os.Open("/proc/self/mountinfo")
+	f, err := mountinfo()
 	if err != nil {
 		return st // unknown: do not warn without evidence
 	}

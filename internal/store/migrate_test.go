@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -90,4 +92,43 @@ func TestMigrationsAreAppendOnly(t *testing.T) {
 	}
 	v, _ := userVersion(context.Background(), db)
 	failIf(t, v != SchemaVersion, "version %d", v)
+}
+
+func TestDetectStorageInContainer(t *testing.T) {
+	info := func(s string) func() (io.ReadCloser, error) {
+		return func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader(s)), nil }
+	}
+	withVolume := "30 22 8:1 /var/lib/docker/volumes/x/_data /data rw - ext4 /dev/sda1 rw\n"
+	failIf(t, !detectStorage("/data", true, info(withVolume)).Persistent, "volume at /data")
+	failIf(t, detectStorage("/data", true, info("22 1 0:21 / / rw - overlay overlay rw\n")).Persistent, "no volume")
+	missing := func() (io.ReadCloser, error) { return nil, os.ErrNotExist }
+	failIf(t, !detectStorage("/data", true, missing).Persistent, "unknown mounts must not raise a warning")
+	failIf(t, !detectStorage("/data", false, missing).Persistent, "outside a container")
+}
+
+func TestMigrateFailures(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "comporta.db")
+	db, err := sql.Open("sqlite", path)
+	failIf(t, err != nil, "%v", err)
+	_, err = db.ExecContext(ctx, "CREATE TABLE something (x INTEGER)")
+	failIf(t, err != nil, "%v", err)
+
+	// The backup cannot be written (a non-empty folder has its name):
+	// nothing is migrated.
+	blocker := path + ".v0.bak"
+	failIf(t, os.MkdirAll(filepath.Join(blocker, "inside"), 0o700) != nil, "mkdir")
+	_, err = migrate(ctx, db, path)
+	failIf(t, err == nil || !strings.Contains(err.Error(), "backing up"), "backup failure: %v", err)
+	v, _ := userVersion(ctx, db)
+	failIf(t, v != 0, "version changed to %d without a backup", v)
+
+	failIf(t, apply(ctx, db, 1, "THIS IS NOT SQL") == nil, "a broken migration must fail")
+	v, _ = userVersion(ctx, db)
+	failIf(t, v != 0, "a failed migration must not move the version (got %d)", v)
+
+	_ = db.Close()
+	_, err = migrate(ctx, db, path)
+	failIf(t, err == nil, "a closed database must fail")
 }
