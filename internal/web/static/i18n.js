@@ -481,7 +481,9 @@ export function t(key, vars = {}) {
   if (entry === undefined) return key;
   if (typeof entry === "object") {
     const n = Number(vars.n ?? 0);
-    entry = entry[new Intl.PluralRules(locale()).select(n)] ?? entry.other;
+    // CLDR puts 0 in Brazilian Portuguese's "one"; people say "0 chamadas".
+    const form = n === 0 ? "other" : new Intl.PluralRules(locale()).select(n);
+    entry = entry[form] ?? entry.other;
     vars = { ...vars, n: n.toLocaleString(locale()) };
   }
   return fill(entry, vars);

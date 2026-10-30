@@ -230,9 +230,12 @@ main.wrap { padding: var(--s6) var(--s5) var(--s7); outline: none; }
   box-shadow: var(--shadow);
 }
 .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: var(--s4); max-width: 70ch; }
-.steps li { counter-increment: step; display: grid; grid-template-columns: 32px 1fr; gap: var(--s3); color: var(--muted); }
+/* The number sits in the left padding, so the step text (bold, plain text and
+   a link, as the translation gives it) flows as one paragraph. */
+.steps li { counter-increment: step; position: relative; padding-left: 44px; min-height: 32px; color: var(--muted); line-height: 1.6; }
 .steps li::before {
-  content: counter(step); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  content: counter(step); position: absolute; left: 0; top: -2px;
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
   background: var(--accent-soft); color: var(--accent-soft-text); font-weight: 700;
 }
 .steps b { color: var(--text); }
@@ -470,10 +473,12 @@ legend + * { clear: both; }
 
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 960px) {
-  .topbar-in { flex-wrap: wrap; gap: 0 var(--s4); padding-top: var(--s2); }
+  /* Row 1: brand and language. Row 2: the 24 h summary. Row 3: navigation. */
+  .topbar-in { flex-wrap: wrap; gap: var(--s2) var(--s4); padding-top: var(--s2); }
+  .lang { order: 1; margin-left: auto; }
+  .pulse { order: 2; width: 100%; margin-left: 0; }
   .mainnav { order: 3; width: 100%; overflow-x: auto; }
-  .mainnav a { min-height: 44px; }
-  .pulse { margin-left: auto; }
+  .mainnav a { min-height: 44px; white-space: nowrap; }
   :root { --header-h: 108px; }
 }
 
@@ -484,6 +489,8 @@ legend + * { clear: both; }
   .pulse-label { display: none; }
   .page-head { align-items: stretch; }
   .page-head > .btn { width: 100%; }
+  .onboard { padding: var(--s5) var(--s4); }
+  .onboard .btn { width: 100%; white-space: normal; text-align: center; padding-block: var(--s2); }
   .conn { grid-template-columns: 1fr; grid-template-areas: "main" "state" "perms" "foot"; padding: var(--s4); }
   .conn-foot .spacer { display: none; }
   .filters { grid-template-columns: 1fr 1fr; }
@@ -519,6 +526,11 @@ legend + * { clear: both; }
   table.audit tr.detail td { display: block; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--r2) var(--r2); padding: var(--s3) var(--s4); background: var(--accent-soft); }
   .detail-grid { grid-template-columns: 1fr; gap: var(--s1); }
   .detail-grid dt { padding-top: var(--s2); }
+}
+
+@media (max-width: 400px) {
+  .mainnav { gap: 0; }
+  .mainnav a { padding: 0 var(--s2); font-size: 0.9375rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
