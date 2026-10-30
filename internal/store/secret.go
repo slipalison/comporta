@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -35,7 +34,7 @@ const (
 type Keys struct {
 	Current []byte
 	// Legacy is the key v1 values were sealed with, when it differs from
-	// Current: db-mcp derived it from the secret with a bare SHA-256.
+	// Current (see LoadKeys).
 	Legacy []byte
 }
 
@@ -50,25 +49,31 @@ const (
 
 // LoadKeys derives the key from secret when given, with Argon2id and a salt
 // kept in dataDir; otherwise it reads (or creates) a random key file there.
-func LoadKeys(secret, dataDir string) (Keys, error) {
+//
+// legacyHex is the key db-mcp sealed with when it ran with a secret (it used
+// SHA-256 of the secret, which this code no longer computes). It is only
+// needed once, on the first start over such a volume: Open seals those values
+// again with the current key. Empty when there is nothing to migrate.
+func LoadKeys(secret, legacyHex, dataDir string) (Keys, error) {
+	var keys Keys
+	if legacyHex != "" {
+		legacy, err := hex.DecodeString(strings.TrimSpace(legacyHex))
+		if err != nil || len(legacy) != 32 {
+			return keys, errors.New("COMPORTA_LEGACY_KEY must be 64 hex characters (the SHA-256 of the former DBMCP_SECRET_KEY)")
+		}
+		keys.Legacy = legacy
+	}
 	if secret == "" {
 		key, err := readOrCreateHex(filepath.Join(dataDir, "secret.key"), 32)
-		return Keys{Current: key}, err
+		keys.Current = key
+		return keys, err
 	}
 	salt, err := readOrCreateHex(filepath.Join(dataDir, "secret.salt"), 16)
 	if err != nil {
-		return Keys{}, err
+		return keys, err
 	}
-	// db-mcp derived its key with a bare SHA-256. It stays only to OPEN what
-	// db-mcp wrote, which Open seals again with the Argon2id key on the first
-	// start; it never seals anything. CodeQL flags it as weak password
-	// hashing (go/weak-sensitive-data-hashing), and that is the reason the
-	// derivation changed.
-	legacy := sha256.Sum256([]byte(secret))
-	return Keys{
-		Current: argon2.IDKey([]byte(secret), salt, argonTime, argonMemory, argonThreads, 32),
-		Legacy:  legacy[:],
-	}, nil
+	keys.Current = argon2.IDKey([]byte(secret), salt, argonTime, argonMemory, argonThreads, 32)
+	return keys, nil
 }
 
 // readOrCreateHex returns the n random bytes stored hex-encoded in path,
@@ -149,6 +154,9 @@ func (c *Cipher) Decrypt(s string) (string, error) {
 	}
 	plain, err := aead.Open(nil, raw[:ns], raw[ns:], nil)
 	if err != nil {
+		if c.Outdated(s) && c.legacy == nil {
+			return "", errors.New("cannot decrypt a connection string written by db-mcp: if it ran with DBMCP_SECRET_KEY, start once with COMPORTA_LEGACY_KEY (see the README)")
+		}
 		return "", errors.New("cannot decrypt connection string: COMPORTA_SECRET_KEY changed?")
 	}
 	return string(plain), nil

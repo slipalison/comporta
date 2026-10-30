@@ -14,23 +14,23 @@ import (
 
 func TestLoadKeysAndCipher(t *testing.T) {
 	dir := t.TempDir()
-	k1, err := LoadKeys("", dir)
+	k1, err := LoadKeys("", "", dir)
 	failIf(t, err != nil || len(k1.Current) != 32 || k1.Legacy != nil, "generated key: %v %+v", err, k1)
-	k2, err := LoadKeys("", dir)
+	k2, err := LoadKeys("", "", dir)
 	failIf(t, err != nil || string(k1.Current) != string(k2.Current), "the generated key must be reused on the next start")
 	info, err := os.Stat(filepath.Join(dir, "secret.key"))
 	failIf(t, err != nil || info.Mode().Perm() != 0o600, "key file: %v %v", info, err)
 
-	fromSecret, err := LoadKeys("uma frase", dir)
+	fromSecret, err := LoadKeys("uma frase", "", dir)
 	failIf(t, err != nil || string(fromSecret.Current) == string(k1.Current), "an explicit secret must win over the file: %v", err)
-	again, _ := LoadKeys("uma frase", dir)
+	again, _ := LoadKeys("uma frase", "", dir)
 	failIf(t, string(again.Current) != string(fromSecret.Current), "the salt must be reused on the next start")
-	otherDir, _ := LoadKeys("uma frase", t.TempDir())
+	otherDir, _ := LoadKeys("uma frase", "", t.TempDir())
 	failIf(t, string(otherDir.Current) == string(fromSecret.Current), "each volume gets its own salt")
 
 	err = os.WriteFile(filepath.Join(dir, "secret.key"), []byte("curta"), 0o600)
 	failIf(t, err != nil, "%v", err)
-	_, err = LoadKeys("", dir)
+	_, err = LoadKeys("", "", dir)
 	failIf(t, err == nil, "a corrupt key file must be an error")
 
 	c, _ := NewCipher(k1.Current)
@@ -45,12 +45,14 @@ func TestLoadKeysAndCipher(t *testing.T) {
 	failIf(t, err == nil, "short ciphertext must fail")
 }
 
-// A volume from db-mcp: v1 values sealed with SHA-256 of the secret are read
-// with the legacy key and sealed again as v2 when the store opens.
+// A volume from db-mcp that ran with a secret: its v1 values are opened with
+// COMPORTA_LEGACY_KEY and sealed again as v2 when the store opens. Without
+// that key, Open refuses and says how to provide it.
 func TestOpenReencryptsLegacyValues(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	keys, err := LoadKeys("frase antiga", dir)
+	const legacyHex = "8f2a6c1d9e0b4f3a7c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b"
+	keys, err := LoadKeys("frase antiga", legacyHex, dir)
 	failIf(t, err != nil, "%v", err)
 	path := filepath.Join(dir, "dbmcp.db")
 
@@ -60,12 +62,18 @@ func TestOpenReencryptsLegacyValues(t *testing.T) {
 	st, err := Open(path, legacy)
 	failIf(t, err != nil, "%v", err)
 	conn := model.Connection{Name: "a", Type: model.Postgres, DSN: "x"}
-	failIf(t, st.CreateConnection(ctx, &conn) != nil, "create")
+	err = st.CreateConnection(ctx, &conn)
+	failIf(t, err != nil, "%v", err)
 	_, err = st.db.ExecContext(ctx, "UPDATE connections SET dsn_enc = ?", v1)
 	failIf(t, err != nil, "%v", err)
 	_ = st.Close()
 
-	c, _ := NewCipherKeys(keys)
+	noLegacy, _ := LoadKeys("frase antiga", "", dir)
+	c, _ := NewCipherKeys(noLegacy)
+	_, err = Open(path, c)
+	failIf(t, err == nil || !strings.Contains(err.Error(), "COMPORTA_LEGACY_KEY"), "without the legacy key: %v", err)
+
+	c, _ = NewCipherKeys(keys)
 	st, err = Open(path, c)
 	failIf(t, err != nil, "open: %v", err)
 	defer func() { _ = st.Close() }()
@@ -75,8 +83,14 @@ func TestOpenReencryptsLegacyValues(t *testing.T) {
 	got, err := st.GetConnection(ctx, conn.ID)
 	failIf(t, err != nil || got.DSN != "postgres://u:p@h/db", "after migration: %+v %v", got, err)
 
-	_, err = Open(path, legacy)
-	failIf(t, err != nil, "v2 values are not touched by Open: %v", err)
+	// Migrated: the legacy key is no longer needed.
+	c, _ = NewCipherKeys(noLegacy)
+	st2, err := Open(path, c)
+	failIf(t, err != nil, "after migration the legacy key is not needed: %v", err)
+	_ = st2.Close()
+
+	_, err = LoadKeys("x", "curta", dir)
+	failIf(t, err == nil, "an invalid legacy key must be an error")
 }
 
 func TestDBPathKeepsLegacyFile(t *testing.T) {

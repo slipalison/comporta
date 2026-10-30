@@ -32,6 +32,7 @@ type config struct {
 	adminPassword string
 	tokens        map[string]string
 	secretKey     string
+	legacyKey     string
 	retentionDays int
 	maxRowsCap    int
 }
@@ -97,6 +98,7 @@ func loadConfig() (config, error) {
 		adminUser:     env("ADMIN_USER", "admin"),
 		adminPassword: env("ADMIN_PASSWORD", ""),
 		secretKey:     env("SECRET_KEY", ""),
+		legacyKey:     env("LEGACY_KEY", ""),
 	}
 	var err error
 	if c.adminPassword == "" {
@@ -163,7 +165,7 @@ func run(ctx context.Context) error {
 	if cfg.secretKey == "" {
 		slog.Warn("COMPORTA_SECRET_KEY not set: using a generated key in the data directory; connection strings are only as safe as that volume")
 	}
-	keys, err := store.LoadKeys(cfg.secretKey, cfg.dataDir)
+	keys, err := store.LoadKeys(cfg.secretKey, cfg.legacyKey, cfg.dataDir)
 	if err != nil {
 		return err
 	}

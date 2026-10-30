@@ -49,7 +49,14 @@ A aba **Conectar clientes** mostra os trechos para VS Code, Copilot CLI, Gemini 
 | `COMPORTA_MAX_ROWS_CAP` | `1000` | Teto global de linhas por consulta; cada conexão tem o seu limite abaixo disso. |
 | `COMPORTA_PORT` | `7843` | Porta no host, sempre em `127.0.0.1` (só no `docker compose`). |
 
-**Vindo do `db-mcp`?** As variáveis `DBMCP_*` continuam lidas (com um aviso no log para renomear), e um volume com `dbmcp.db` continua sendo usado. Na primeira partida, as connection strings gravadas pelo `db-mcp` (chave por SHA-256 da frase) são cifradas de novo com a chave Argon2id.
+**Vindo do `db-mcp`?** As variáveis `DBMCP_*` continuam lidas (com um aviso no log para renomear), e um volume com `dbmcp.db` continua sendo usado. Na primeira partida, as connection strings gravadas pelo `db-mcp` são cifradas de novo no formato novo. Se o `db-mcp` rodava **com** `DBMCP_SECRET_KEY`, a chave dele era o SHA-256 da frase, que o Comporta não calcula mais; informe-a uma vez, só para essa partida:
+
+```bash
+# a chave antiga, em hex (o printf é builtin: a frase não aparece no ps)
+printf %s "$DBMCP_SECRET_KEY" | sha256sum | cut -c1-64   # vira COMPORTA_LEGACY_KEY
+```
+
+Depois da primeira partida a variável pode sair. Sem ela, o servidor não sobe e diz isso no log.
 
 ## O que a IA enxerga
 
