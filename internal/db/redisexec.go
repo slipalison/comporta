@@ -99,23 +99,32 @@ func DescribeRedis(ctx context.Context, client *redis.Client, pattern string, n 
 	if pattern == "" {
 		pattern = "*"
 	}
-	out := &RedisSchema{Pattern: pattern, Sampled: []RedisKey{}}
 	size, err := client.DBSize(ctx).Result()
 	if err != nil {
 		return nil, err
 	}
-	out.DBSize = size
+	keys, err := scanKeys(ctx, client, pattern, n)
+	if err != nil {
+		return nil, err
+	}
+	sampled, err := keyDetails(ctx, client, keys)
+	if err != nil {
+		return nil, err
+	}
+	return &RedisSchema{DBSize: size, Pattern: pattern, Sampled: sampled}, nil
+}
+
+// scanKeys returns up to n keys, sorted, in a bounded number of SCAN rounds:
+// a sparse pattern must not walk the whole keyspace.
+func scanKeys(ctx context.Context, client *redis.Client, pattern string, n int) ([]string, error) {
 	var keys []string
 	var cursor uint64
-	// A bounded number of SCAN rounds: a sparse pattern must not walk the
-	// whole keyspace.
 	for range 20 {
-		var batch []string
-		batch, cursor, err = client.Scan(ctx, cursor, pattern, int64(n)).Result()
+		batch, next, err := client.Scan(ctx, cursor, pattern, int64(n)).Result()
 		if err != nil {
 			return nil, err
 		}
-		keys = append(keys, batch...)
+		keys, cursor = append(keys, batch...), next
 		if cursor == 0 || len(keys) >= n {
 			break
 		}
@@ -124,6 +133,15 @@ func DescribeRedis(ctx context.Context, client *redis.Client, pattern string, n 
 		keys = keys[:n]
 	}
 	sort.Strings(keys)
+	return keys, nil
+}
+
+// keyDetails fetches TYPE and TTL of every key in one pipeline.
+func keyDetails(ctx context.Context, client *redis.Client, keys []string) ([]RedisKey, error) {
+	out := make([]RedisKey, 0, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
 	pipe := client.Pipeline()
 	types := make([]*redis.StatusCmd, len(keys))
 	ttls := make([]*redis.DurationCmd, len(keys))
@@ -131,17 +149,15 @@ func DescribeRedis(ctx context.Context, client *redis.Client, pattern string, n 
 		types[i] = pipe.Type(ctx, k)
 		ttls[i] = pipe.TTL(ctx, k)
 	}
-	if len(keys) > 0 {
-		if _, err := pipe.Exec(ctx); err != nil {
-			return nil, err
-		}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, err
 	}
 	for i, k := range keys {
 		ttl := int64(-1)
 		if d := ttls[i].Val(); d > 0 {
 			ttl = int64(d.Seconds())
 		}
-		out.Sampled = append(out.Sampled, RedisKey{Key: k, Type: types[i].Val(), TTL: ttl})
+		out = append(out, RedisKey{Key: k, Type: types[i].Val(), TTL: ttl})
 	}
 	return out, nil
 }

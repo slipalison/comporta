@@ -8,6 +8,14 @@ import (
 	"github.com/slipalison/comporta/internal/model"
 )
 
+// Why a group of Redis commands is never available.
+const (
+	whyTx          = "transactions are not available; send one command per call"
+	whySubscribe   = "subscriptions stream forever and are not available"
+	whyBlocking    = "blocking commands are not available"
+	whyReplication = "replication commands are not available"
+)
+
 // Redis commands by the permission they need. A command missing from every
 // list needs DDL/admin, as an unknown SQL statement does.
 var (
@@ -44,35 +52,35 @@ var (
 		"KEYS":       "KEYS scans every key and blocks the server; use SCAN with MATCH and COUNT",
 		"SELECT":     "SELECT would switch the database of a pooled connection; put the database number in the connection string",
 		"SWAPDB":     "SWAPDB swaps whole databases",
-		"MULTI":      "transactions are not available; send one command per call",
-		"EXEC":       "transactions are not available; send one command per call",
-		"DISCARD":    "transactions are not available; send one command per call",
-		"WATCH":      "transactions are not available; send one command per call",
-		"UNWATCH":    "transactions are not available; send one command per call",
-		"SUBSCRIBE":  "subscriptions stream forever and are not available",
-		"PSUBSCRIBE": "subscriptions stream forever and are not available",
-		"SSUBSCRIBE": "subscriptions stream forever and are not available",
+		"MULTI":      whyTx,
+		"EXEC":       whyTx,
+		"DISCARD":    whyTx,
+		"WATCH":      whyTx,
+		"UNWATCH":    whyTx,
+		"SUBSCRIBE":  whySubscribe,
+		"PSUBSCRIBE": whySubscribe,
+		"SSUBSCRIBE": whySubscribe,
 		"MONITOR":    "MONITOR streams forever and is not available",
-		"BLPOP":      "blocking commands are not available",
-		"BRPOP":      "blocking commands are not available",
-		"BLMOVE":     "blocking commands are not available",
-		"BLMPOP":     "blocking commands are not available",
-		"BZPOPMIN":   "blocking commands are not available",
-		"BZPOPMAX":   "blocking commands are not available",
-		"BZMPOP":     "blocking commands are not available",
-		"BRPOPLPUSH": "blocking commands are not available",
-		"WAIT":       "blocking commands are not available",
-		"WAITAOF":    "blocking commands are not available",
+		"BLPOP":      whyBlocking,
+		"BRPOP":      whyBlocking,
+		"BLMOVE":     whyBlocking,
+		"BLMPOP":     whyBlocking,
+		"BZPOPMIN":   whyBlocking,
+		"BZPOPMAX":   whyBlocking,
+		"BZMPOP":     whyBlocking,
+		"BRPOPLPUSH": whyBlocking,
+		"WAIT":       whyBlocking,
+		"WAITAOF":    whyBlocking,
 		"QUIT":       "QUIT would close a pooled connection",
 		"RESET":      "RESET would reset a pooled connection",
 		"AUTH":       "authenticate in the connection string, not per call",
 		"HELLO":      "HELLO would change the protocol of a pooled connection",
 		"SHUTDOWN":   "SHUTDOWN stops the server",
 		"DEBUG":      "DEBUG can crash or stall the server",
-		"SYNC":       "replication commands are not available",
-		"PSYNC":      "replication commands are not available",
-		"REPLICAOF":  "replication commands are not available",
-		"SLAVEOF":    "replication commands are not available",
+		"SYNC":       whyReplication,
+		"PSYNC":      whyReplication,
+		"REPLICAOF":  whyReplication,
+		"SLAVEOF":    whyReplication,
 		"CLIENT":     "CLIENT changes or kills connections",
 		"FAILOVER":   "FAILOVER is not available",
 		"MIGRATE":    "MIGRATE moves keys to another server",
